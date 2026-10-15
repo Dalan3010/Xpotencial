@@ -1,0 +1,15 @@
+# Local agent state and project memory
+.atl/
+.codegraph/
+.engram/
+odd/
+
+# Local editor configuration
+.vscode/
+
+# Personal reference images
+WhatsApp Image *
+WhatsApp Video *
+
+# Native build outputs (also covered by cpp/.gitignore)
+cpp/build*/
