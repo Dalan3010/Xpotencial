@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
 namespace app {
 namespace {
@@ -49,6 +51,26 @@ bool button(Rectangle r,const char* text,bool selected=false) {
     DrawRectangleRec(r,selected ? Color{53,107,155,255} : hit(r) ? Color{65,78,96,255} : Color{40,50,67,255});
     app::DrawTextUi(text,static_cast<int>(r.x+8),static_cast<int>(r.y+8),16,RAYWHITE);
     return hit(r) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+}
+std::string fixed(double v,int decimals) {
+    char b[64];
+    std::snprintf(b,sizeof b,"%.*f",decimals,v);
+    return std::string(b);
+}
+// Latin-1-safe scientific notation: the UI only loads codepoints 32..255, so
+// superscript digits such as 10^9 are written in plain ASCII.
+std::string scientific(double v,int decimals) {
+    int exponent=0;
+    double mantissa=v;
+    if (std::fabs(v)>0.0) {
+        exponent=static_cast<int>(std::floor(std::log10(std::fabs(v))));
+        mantissa=v/std::pow(10.0,exponent);
+        if (std::fabs(mantissa)>=10.0) { mantissa/=10.0; ++exponent; }
+        else if (std::fabs(mantissa)<1.0) { mantissa*=10.0; --exponent; }
+    }
+    char b[64];
+    std::snprintf(b,sizeof b,"%.*fx10^%d",decimals,mantissa,exponent);
+    return std::string(b);
 }
 }
 Rectangle Controls::viewport() const {
@@ -232,47 +254,82 @@ void Controls::drawHelp(const Rectangle& plotRect) {
     const double fieldMagnitude=dipole::length(field);
     const double moment=parameters.q*parameters.d;
     const Rectangle vp=viewport();
-    const float panelWidth=std::min(560.0f,std::max(360.0f,vp.width-140.0f));
-    const float panelHeight=std::min(480.0f,vp.height-10.0f);
+    const float panelWidth=std::min(760.0f,std::max(360.0f,vp.width-140.0f));
+    const float panelHeight=std::min(560.0f,vp.height-10.0f);
     Rectangle panel{vp.x+vp.width-panelWidth,vp.y+8,panelWidth,panelHeight};
     DrawRectangleRec(panel,Color{20,29,43,244});
     DrawRectangleLinesEx(panel,1,Color{53,107,155,255});
     const int x=static_cast<int>(panel.x+16);
     float y=panel.y+14;
-    auto drawLine=[&](const char* text,int size,Color color,float advance) {
-        app::DrawTextUi(text,x,static_cast<int>(y),size,color); y+=advance;
+
+    const Color formula{120,220,255,255};
+    const Color result{57,255,20,255};
+    const Color label{200,206,216,255};
+    const Color muted{150,156,168,255};
+
+    struct Seg { std::string text; Color color; bool highlight=false; };
+    auto plain=[&](const std::string& text,int size,Color color,float advance) {
+        app::DrawTextUi(text.c_str(),x,static_cast<int>(y),size,color); y+=advance;
     };
-    char b[256];
-    drawLine("Formulas y resultados en tiempo real",19,SKYBLUE,26);
-    drawLine(view<3 ? "Mueve el raton sobre el mapa del corte para sondear el punto."
-                    : "Vista 3D: no hay corte, se evalua el ultimo punto sondeado.",
-             13,LIGHTGRAY,22);
+    // Renders one equation line, shrinking the font until it fits the panel and
+    // emphasising the highlighted (final-result) segment in neon green, faux bold.
+    auto equation=[&](const std::vector<Seg>& segs,float advance) {
+        auto widthAt=[&](int size) {
+            float w=0;
+            for (const auto& s:segs) w+=static_cast<float>(app::MeasureTextUi(s.text.c_str(),s.highlight ? size+1 : size));
+            return w;
+        };
+        int size=14;
+        const float available=panel.width-32.0f;
+        while (size>10 && widthAt(size)>available) --size;
+        float cx=static_cast<float>(x);
+        for (const auto& s:segs) {
+            const int px=static_cast<int>(cx), sz=s.highlight ? size+1 : size;
+            app::DrawTextUi(s.text.c_str(),px,static_cast<int>(y),sz,s.color);
+            if (s.highlight) app::DrawTextUi(s.text.c_str(),px+1,static_cast<int>(y),sz,s.color);
+            cx+=static_cast<float>(app::MeasureTextUi(s.text.c_str(),sz));
+        }
+        y+=advance;
+    };
+
+    plain("Formulas y resultados en tiempo real",19,SKYBLUE,26);
+    plain(view<3 ? "Mueve el raton sobre el mapa del corte para sondear el punto."
+                 : "Vista 3D: no hay corte, se evalua el ultimo punto sondeado.",13,muted,22);
     y+=4;
-    std::snprintf(b,sizeof b,"Punto de evaluacion (corte z = %.4g m)",probe_.z);
-    drawLine(b,14,RAYWHITE,21);
-    std::snprintf(b,sizeof b,"x = %.4g m   y = %.4g m   z = %.4g m",probe_.x,probe_.y,probe_.z);
-    drawLine(b,14,RAYWHITE,21);
-    if (single) std::snprintf(b,sizeof b,"r = %.6g m",rPlus);
-    else std::snprintf(b,sizeof b,"r+ = %.6g m   r- = %.6g m",rPlus,rMinus);
-    drawLine(b,14,RAYWHITE,21);
+    plain("Punto de evaluacion (corte z = "+fixed(probe_.z,4)+" m)",14,label,21);
+    plain("x = "+fixed(probe_.x,4)+" m   y = "+fixed(probe_.y,4)+" m   z = "+fixed(probe_.z,4)+" m",14,label,21);
+    if (single) plain("r = "+fixed(rPlus,5)+" m",14,label,21);
+    else plain("r+ = "+fixed(rPlus,5)+" m   r- = "+fixed(rMinus,5)+" m",14,label,21);
     y+=6;
-    std::snprintf(b,sizeof b,"p = q * d = (%.4g nC)(%.4g m) = %.4g nC*m",parameters.q,parameters.d,moment);
-    drawLine(b,14,Color{255,214,120,255},22);
-    if (single) std::snprintf(b,sizeof b,"V = k * q * (1/r) = %.5g V",potential);
-    else std::snprintf(b,sizeof b,"V = k * q * (1/r+ - 1/r-) = %.5g V",potential);
-    drawLine(b,14,Color{150,222,150,255},22);
-    std::snprintf(b,sizeof b,"|E| = |-grad V| = %.5g V/m",fieldMagnitude);
-    drawLine(b,14,Color{150,222,150,255},22);
-    std::snprintf(b,sizeof b,"E = (%.4g, %.4g, %.4g) V/m",field.x,field.y,field.z);
-    drawLine(b,14,LIGHTGRAY,22);
-    if (single) std::snprintf(b,sizeof b,"epsilon = max(0.001 * L, 0.000001) = %.4g m",epsilon);
-    else std::snprintf(b,sizeof b,"epsilon = max(0.001 * d, 0.000001) = %.4g m",epsilon);
-    drawLine(b,14,Color{255,214,120,255},22);
+    equation({{"p = q·d",formula},
+              {"  ==>  p = ",muted},
+              {"("+fixed(parameters.q,2)+" nC) · ("+fixed(parameters.d,2)+" m)",formula},
+              {" = ",muted},
+              {fixed(moment,2)+" nC·m",result,true}},22);
+    if (single) {
+        equation({{"V = k·q·(1/r)",formula},
+                  {"  ==>  V = ",muted},
+                  {"("+scientific(parameters.k,2)+") · ("+fixed(parameters.q,2)+" nC) · (1/"+fixed(rPlus,2)+")",formula},
+                  {" = ",muted},
+                  {fixed(potential,2)+" V",result,true}},22);
+    } else {
+        equation({{"V = k·q·(1/r+ - 1/r-)",formula},
+                  {"  ==>  V = ",muted},
+                  {"("+scientific(parameters.k,2)+") · ("+fixed(parameters.q,2)+" nC) · (1/"+fixed(rPlus,2)+" - 1/"+fixed(rMinus,2)+")",formula},
+                  {" = ",muted},
+                  {fixed(potential,2)+" V",result,true}},22);
+    }
+    equation({{"|E| = |-grad V|",formula},
+              {"  ==>  |E| = |(Ex, Ey, Ez)| = sqrt(Ex²+Ey²+Ez²)",formula},
+              {" = ",muted},
+              {fixed(fieldMagnitude,2)+" V/m",result,true}},22);
+    plain("E = ("+fixed(field.x,3)+", "+fixed(field.y,3)+", "+fixed(field.z,3)+") V/m",13,muted,20);
+    if (single) plain("epsilon = max(0.001 · L, 1e-6) = "+fixed(epsilon,5)+" m",13,muted,20);
+    else plain("epsilon = max(0.001 · d, 1e-6) = "+fixed(epsilon,5)+" m",13,muted,20);
     y+=6;
-    app::DrawTextUi("Convenciones: q en nC; k mostrada en unidades SI de 10^9.",x,static_cast<int>(y),13,LIGHTGRAY); y+=19;
-    app::DrawTextUi("E = -grad V con diferencias centradas, h = 0.05 * epsilon.",x,static_cast<int>(y),13,LIGHTGRAY); y+=19;
-    app::DrawTextUi("Corte de mapa y campo: z fisico = z del centro.",x,static_cast<int>(y),13,LIGHTGRAY); y+=19;
-    app::DrawTextUi(single ? "Vista 5 integra el campo de carga unica." : "Vista 5 integra el campo del dipolo.",
-                    x,static_cast<int>(y),13,LIGHTGRAY);
+    plain("Convenciones: q en nC; k mostrada en unidades SI de 10^9.",13,muted,19);
+    plain("E = -grad V con diferencias centradas, h = 0.05 * epsilon.",13,muted,19);
+    plain("Corte de mapa y campo: z fisico = z del centro.",13,muted,19);
+    plain(single ? "Vista 5 integra el campo de carga unica." : "Vista 5 integra el campo del dipolo.",13,muted,19);
 }
 }
