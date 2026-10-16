@@ -60,7 +60,7 @@ Tests use explicit failure checks, not `assert`, so Release tests remain active.
 
 | Action | Result |
 |---|---|
-| Top tabs | Potential map, equipotential contours, vector field, height surface, dipole streamlines 3D |
+| Top tabs | Potential map, equipotential contours, vector field, height surface, 3D field (equipotential spheres for a single charge, streamlines for the dipole) |
 | Sidebar slider or +/- | Adjust parameter within validated bounds |
 | Click numeric value, type, Enter | Replace value; scientific notation accepted; Escape cancels |
 | Ctrl+A while editing | Select value for replacement |
@@ -75,6 +75,8 @@ The first four views retain their defaults and slider ranges: q=1 nC (0.1..5), k
 (0..180), center=(0,0,0) m, x/y=-5..5 m, grid=70 (15..150), arrows=14
 (4..30). The map field overlay remains off. View five keeps q, k, d, orientation,
 and center controls; plane-domain and arrow-density sliders do not affect it.
+In single-charge mode, view five shows only the charges and labels toggles: the
+marker/pause toggles and the speed slider are hidden because nothing animates.
 
 | Streamline control | Default | Effect |
 |---|---|---|
@@ -87,6 +89,13 @@ Streamlines are integrated in physical 3D coordinates from the dipole field and
 cached when physical parameters change. Markers indicate positive-to-negative
 field direction; they do **not** represent particle velocity. Reset restores
 physical and visibility defaults; camera state is retained.
+
+In single-charge mode no streamlines are integrated or drawn: view five renders
+five concentric equipotential circles (the billboard silhouette of spheres) around
+the charge, at radii 0.2, 0.4, 0.6, 0.8 and 1.0 times the reference length
+(half the smaller domain span), plus the axes and the charge marker. The dipole
+mode keeps the radial streamlines and animated markers described above, and
+switching source resets the view-five camera to that mode's reference framing.
 
 The web's unbounded numeric center/domain inputs have a native safety limit of
 +/-10000 m, with domain spans >=0.001 m. Their sliders cover -10..10 m; numeric
@@ -145,8 +154,10 @@ raylib. The core-only configuration always works without raylib.
 `include/dipole/physics.hpp` and `src/physics.cpp` own numerical data.
 `src/renderer.cpp` owns cached grids, contours, arrows, textures, meshes, cached
 3D streamlines, and a resize-aware render target. Streamline integration runs
-only when physical charge parameters, center, or orientation change; animation
-phase, visibility, camera motion, and speed never reintegrate paths. The first four
+only when physical charge parameters, center, or orientation change, and is
+skipped entirely for a single charge (cached paths are cleared there);
+animation phase, visibility, camera motion, and speed never reintegrate paths.
+The first four
 views retain their existing numerical caches. Tested radial and volume numerical
 APIs remain intact even though radial-surface rendering is retired.
 No measured performance guarantee is claimed.

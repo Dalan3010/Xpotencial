@@ -58,7 +58,7 @@ Windows/MSVC commands, system prerequisites and offline builds are documented in
 | 2 | Equipotential contours (17 levels, CPU marching squares) |
 | 3 | Electric-field vector overlay |
 | 4 | Potential height surface `V(x,y)` |
-| 5 | 3D dipole with cached field streamlines and direction markers |
+| 5 | 3D view: single charge shows concentric equipotential spheres (circles) with no radial streamlines; dipole keeps radial field streamlines and direction markers |
 
 ## Physics conventions
 
