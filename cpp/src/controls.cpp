@@ -139,14 +139,17 @@ bool Controls::draw(Rectangle plotRect) {
     if (button({static_cast<float>(GetScreenWidth()-140),8,125,32},"Ayuda / física")) help=!help;
     DrawRectangle(0,90,static_cast<int>(sidebar),GetScreenHeight()-90,Color{24,32,46,255});
     const float areaHeight = static_cast<float>(GetScreenHeight()-170);
-    const int rows=view==4 ? 8 : 14, toggles=view==4 ? 4 : 5;
+    // Single-charge view 5 has no markers or animation: only charges + labels stay.
+    const bool streamSingle = view==4 && parameters.chargeCount==1;
+    const int rows=view==4 ? 8 : 14, toggles=view==4 ? (streamSingle ? 2 : 4) : 5;
     // Filter at render time; definition indices and their switches are never renumbered.
     const bool hideSeparation = parameters.chargeCount==1;
     auto hidden = [&](int index) { return hideSeparation && (index==2 || index==3 || index==4); };
     if (hidden(editing_)) editing_ = -1;
     if (hidden(dragging_)) dragging_ = -1;
     const int visibleRows = rows-(hideSeparation ? 3 : 0);
-    const float contentHeight=static_cast<float>(visibleRows*68+toggles*32+92);
+    // 92 = reset button + speed row + footer hints; the speed row adds 31 when shown.
+    const float contentHeight=static_cast<float>(visibleRows*68+toggles*32+(streamSingle ? 61 : 92));
     if (!help && GetMouseX()<sidebar && GetMouseY()>100) scroll_ -= GetMouseWheelMove()*40;
     scroll_ = std::clamp(scroll_,0.0f,std::max(0.0f,contentHeight-areaHeight));
     BeginScissorMode(0,100,static_cast<int>(sidebar),static_cast<int>(areaHeight));
@@ -173,7 +176,7 @@ bool Controls::draw(Rectangle plotRect) {
         }
     }
     y += toggles*32+8;
-    if (view==4) {
+    if (view==4 && !streamSingle) {
         app::DrawTextUi("Velocidad",15,static_cast<int>(y+2),15,RAYWHITE);
         Rectangle speedTrack{118,y+8,175,7};
         DrawRectangleRec(speedTrack,Color{74,86,101,255});
@@ -330,6 +333,7 @@ void Controls::drawHelp(const Rectangle& plotRect) {
     plain("Convenciones: q en nC; k mostrada en unidades SI de 10^9.",13,muted,19);
     plain("E = -grad V con diferencias centradas, h = 0.05 * epsilon.",13,muted,19);
     plain("Corte de mapa y campo: z fisico = z del centro.",13,muted,19);
-    plain(single ? "Vista 5 integra el campo de carga unica." : "Vista 5 integra el campo del dipolo.",13,muted,19);
+    plain(single ? "Vista 5 dibuja 5 esferas equipotenciales concéntricas alrededor de la carga."
+                 : "Vista 5 integra el campo del dipolo.",13,muted,19);
 }
 }
