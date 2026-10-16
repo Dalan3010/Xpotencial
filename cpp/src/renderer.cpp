@@ -72,6 +72,28 @@ void lineArrow(Vector2 a,Vector2 b,Color c) {
 bool chargeIsPositive(const dipole::Parameters& p,int index) {
     return p.chargeCount==1 ? p.q>=0 : index==0;
 }
+// Five concentric equipotential circles drawn as billboards: each lies in the plane
+// through the charge perpendicular to the camera forward vector, so it renders as the
+// exact silhouette of a sphere (a perfect circle) from any orbit angle.
+void equipotentialCircles(Vector3 center,float reference,Vector3 forward) {
+    const Vector3 referenceAxis=std::abs(forward.y)<.999f ? Vector3{0,1,0} : Vector3{0,0,1};
+    const Vector3 u=Vector3Normalize(Vector3CrossProduct(forward,referenceAxis));
+    const Vector3 v=Vector3Normalize(Vector3CrossProduct(forward,u)); // orthonormal to u in-plane
+    const Color circle{90,96,104,255};
+    constexpr int segments=96;
+    constexpr float radii[]={.2f,.4f,.6f,.8f,1.0f};
+    for (const float factor : radii) {
+        const float radius=reference*factor;
+        Vector3 previous{center.x+u.x*radius,center.y+u.y*radius,center.z+u.z*radius};
+        for (int i=1;i<=segments;++i) {
+            const float t=2*PI*static_cast<float>(i)/segments;
+            const float c=std::cos(t)*radius, s=std::sin(t)*radius;
+            const Vector3 current{center.x+u.x*c+v.x*s,center.y+u.y*c+v.y*s,center.z+u.z*c+v.z*s};
+            DrawLine3D(previous,current,circle);
+            previous=current;
+        }
+    }
+}
 }
 Renderer::Renderer() { material_=LoadMaterialDefault(); }
 Renderer::~Renderer() {
@@ -91,12 +113,24 @@ void Renderer::update(const dipole::Parameters& p) {
     const bool planeChanged=physicsChanged || p.xmin!=p_.xmin || p.xmax!=p_.xmax ||
         p.ymin!=p_.ymin || p.ymax!=p_.ymax || p.resolution!=p_.resolution || p.fieldDensity!=p_.fieldDensity;
     if (physicsChanged) {
-        dipole::StreamlineOptions options;
-        options.seedCount=16;
-        options.seedAngleDegrees=72;
-        options.stepSize=.02;
-        streamlines_=dipole::streamlines(p,options);
-        animationPhase_=0;
+        if (p.chargeCount==1) {
+            // Single charge renders equipotential circles instead of streamlines.
+            streamlines_.clear();
+            animationPhase_=0;
+        } else {
+            dipole::StreamlineOptions options;
+            options.seedCount=16;
+            options.seedAngleDegrees=72;
+            options.stepSize=.02;
+            streamlines_=dipole::streamlines(p,options);
+            animationPhase_=0;
+        }
+        if (p.chargeCount!=p_.chargeCount) {
+            // Reset the streamline camera to each mode's reference orientation
+            // (single: y right, z up, x lower-left; dipole: default framing).
+            if (p.chargeCount==1) { yaw_[1]=-.785f; pitch_[1]=.13f; zoom_[1]=1.0f; }
+            else { yaw_[1]=1.57079632679f; pitch_[1]=0; zoom_[1]=1.0f; }
+        }
     }
     p_=p;
     initialized_=true;
@@ -218,18 +252,24 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     Vector3 streamCenter{};
     float streamRadius=0;
     if (isStreamlines) {
-        Vector3 minimum{INFINITY,INFINITY,INFINITY}, maximum{-INFINITY,-INFINITY,-INFINITY};
-        bool hasPoints=false;
-        for (const auto& path : streamlines_) for (const auto point : path.points) {
-            const Vector3 position=world(point,origin);
-            minimum={std::min(minimum.x,position.x),std::min(minimum.y,position.y),std::min(minimum.z,position.z)};
-            maximum={std::max(maximum.x,position.x),std::max(maximum.y,position.y),std::max(maximum.z,position.z)};
-            hasPoints=true;
-        }
-        if (hasPoints) {
-            streamCenter=Vector3Scale(Vector3Add(minimum,maximum),.5f);
-            for (const auto& path : streamlines_) for (const auto point : path.points)
-                streamRadius=std::max(streamRadius,Vector3Distance(world(point,origin),streamCenter));
+        if (p_.chargeCount==1) {
+            // Frame the outermost equipotential circle around the charge.
+            streamCenter=world(dipole::charges(p_).plus,origin);
+            streamRadius=static_cast<float>(dipole::referenceLength(p_));
+        } else {
+            Vector3 minimum{INFINITY,INFINITY,INFINITY}, maximum{-INFINITY,-INFINITY,-INFINITY};
+            bool hasPoints=false;
+            for (const auto& path : streamlines_) for (const auto point : path.points) {
+                const Vector3 position=world(point,origin);
+                minimum={std::min(minimum.x,position.x),std::min(minimum.y,position.y),std::min(minimum.z,position.z)};
+                maximum={std::max(maximum.x,position.x),std::max(maximum.y,position.y),std::max(maximum.z,position.z)};
+                hasPoints=true;
+            }
+            if (hasPoints) {
+                streamCenter=Vector3Scale(Vector3Add(minimum,maximum),.5f);
+                for (const auto& path : streamlines_) for (const auto point : path.points)
+                    streamRadius=std::max(streamRadius,Vector3Distance(world(point,origin),streamCenter));
+            }
         }
         extent=std::max(streamRadius*2,static_cast<float>(dipole::referenceLength(p_)));
     }
@@ -255,9 +295,15 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     if (isStreamlines && !v.animationPaused) animationPhase_+=GetFrameTime()*.42*v.animationSpeed;
     BeginMode3D(camera);
     if (isStreamlines) {
-        for (const auto& path : streamlines_) {
-            for (size_t i=1;i<path.points.size();++i) {
-                DrawLine3D(world(path.points[i-1],origin),world(path.points[i],origin),Color{92,98,104,235});
+        if (p_.chargeCount==1) {
+            // Billboard circles must be emitted inside the 3D pass.
+            equipotentialCircles(streamCenter,static_cast<float>(dipole::referenceLength(p_)),
+                                 Vector3Normalize(Vector3Subtract(camera.target,camera.position)));
+        } else {
+            for (const auto& path : streamlines_) {
+                for (size_t i=1;i<path.points.size();++i) {
+                    DrawLine3D(world(path.points[i-1],origin),world(path.points[i],origin),Color{92,98,104,235});
+                }
             }
         }
     } else DrawMesh(surface_,material_,MatrixIdentity());
@@ -327,16 +373,20 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     rlSetClipPlanes(previousNear,previousFar);
     DrawTexturePro(target_.texture,{0,0,static_cast<float>(w),-static_cast<float>(h)},r,{0,0},0,WHITE);
     char caption[180];
-    if (isStreamlines) {
+    if (isStreamlines && p_.chargeCount==1) {
+        std::snprintf(caption,sizeof(caption),"5 esferas equipotenciales concéntricas | V = k·q/r | metros físicos");
+    } else if (isStreamlines) {
         std::snprintf(caption,sizeof(caption),"Líneas de flujo del campo eléctrico integradas | %zu rutas | metros físicos",streamlines_.size());
     } else std::snprintf(caption,sizeof(caption),"ALTURA visual = %.3g * clamp(V/%.3g, -1, 1); NO es z físico",.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin),gridLimit_);
     app::DrawTextUi(caption,static_cast<int>(r.x+8),static_cast<int>(r.y+8),15,DARKGRAY);
     if (isStreamlines) {
         app::DrawTextUi(p_.chargeCount==1
-            ? "Los marcadores indican la dirección del campo hacia fuera, no la velocidad real."
+            ? "En cada esfera el potencial V es constante y el campo E es radial, perpendicular a la superficie."
             : "Los marcadores indican la dirección del campo de +q a -q, no la velocidad real.",
             static_cast<int>(r.x+8),static_cast<int>(r.y+30),14,DARKGRAY);
-        app::DrawTextUi("Arrastra para orbitar; rueda para zoom. Las curvas físicas en caché no cambian con la animación.",
+        app::DrawTextUi(p_.chargeCount==1
+            ? "Arrastra para orbitar; rueda para zoom."
+            : "Arrastra para orbitar; rueda para zoom. Las curvas físicas en caché no cambian con la animación.",
             static_cast<int>(r.x+8),static_cast<int>(r.y+r.height+9),14,DARKGRAY);
     } else {
         app::DrawTextUi("x/y en metros; marcadores XY sobre la superficie. Arrastra para orbitar; rueda para zoom.",
