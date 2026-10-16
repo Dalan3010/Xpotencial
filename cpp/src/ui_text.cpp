@@ -107,10 +107,6 @@ void InitUiFont() {
     }
     const auto& cp = GetCodepoints();
     const int cpCount = static_cast<int>(cp.size());
-    const char* cpArray = nullptr;
-    if (cpCount > 0) {
-        cpArray = reinterpret_cast<const char*>(cp.data());
-    }
     const std::string fontPath = GetFontPath();
     for (size_t i = 0; i < kFontSizes.size(); ++i) {
         const int sz = kFontSizes[i];
