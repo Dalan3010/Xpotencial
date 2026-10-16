@@ -99,7 +99,7 @@ bool Controls::parameterRow(int index,float y) {
     }
     return changed;
 }
-bool Controls::draw() {
+bool Controls::draw(Rectangle plotRect) {
     bool changed = false;
     DrawRectangle(0,0,GetScreenWidth(),90,Color{24,32,46,255});
     const char* title = "Dipolo eléctrico | nativo C++17";
@@ -202,36 +202,77 @@ bool Controls::draw() {
     app::DrawTextUi("Desplazar panel | clic en valor para escribir",12,GetScreenHeight()-58,15,LIGHTGRAY);
     app::DrawTextUi("Intro: aplicar  /  Esc: cancelar",12,GetScreenHeight()-37,15,LIGHTGRAY);
     if (!error_.empty()) app::DrawTextUi(error_.c_str(),345,GetScreenHeight()-28,16,ORANGE);
-    if (help) {
-        Rectangle r{sidebar+25,115,static_cast<float>(GetScreenWidth())-sidebar-50,480};
-        DrawRectangleRec(r,Color{20,29,43,250});
-        const bool single = parameters.chargeCount==1;
-        const char* lines[] = {
-            "Convenciones físicas y numéricas",
-            single ? "V = k q (1/r)  [V]" : "V = k q (1/r+ - 1/r-)  [V]",
-            "q está en nC; la k mostrada está en unidades SI de 10^9.",
-            "r = sqrt(dx^2 + dy^2 + dz^2 + epsilon^2)",
-            single ? "epsilon = max(0.001 L, 0.000001 m); L = mitad de la menor extensión del dominio"
-                   : "epsilon = max(0.001 d, 0.000001 m)",
-            "E = -grad V  [V/m]; diferencias centradas, h = 0.05 epsilon.",
-            "Corte de mapa y campo: z físico = z del centro.",
-            "Contornos: marching squares en CPU con decisor de silla.",
-            "La altura es visual: clamp(V / límite de color, -1, 1) * H.",
-            "H = 0.3 * menor extensión del dominio; la altura NO es z físico.",
-            single ? "Vista 5: las líneas 3D físicas integran el campo eléctrico de carga única."
-                   : "Vista 5: las líneas 3D físicas integran el campo eléctrico del dipolo.",
-            "Las curvas se almacenan en caché tras cambios de parámetros físicos, nunca por fotograma.",
-            single ? "Los marcadores de dirección se alejan de la carga a lo largo de cada línea de campo."
-                   : "Los marcadores de dirección van de +q hacia -q a lo largo de cada línea de campo.",
-            "Las API de magnitud radial y volumen siguen disponibles en el núcleo.",
-            "El movimiento del marcador indica dirección, no la velocidad real de la partícula.",
-            "Pausa, oculta o ajusta la velocidad del marcador en los controles de la quinta vista.",
-            "3D: arrastrar con botón izquierdo orbita, rueda hace zoom, solo dentro del gráfico.",
-            "Controles: deslizador, +/- o clic en el número y escribe; Intro aplica.",
-            "Los valores inválidos dejan intacta la simulación anterior."
-        };
-        for (int i=0;i<19;++i) app::DrawTextUi(lines[i],static_cast<int>(r.x+18),static_cast<int>(r.y+18+i*23),i==0 ? 21 : 14,RAYWHITE);
-    }
+    if (help) drawHelp(plotRect);
     return changed;
+}
+void Controls::probePoint(const Rectangle& plotRect) {
+    // Sample the cut plane only where the plot is actually drawn; otherwise keep
+    // the previous physical point so the numbers stay stable between frames.
+    if (plotRect.width>1 && plotRect.height>1 && CheckCollisionPointRec(GetMousePosition(),plotRect)) {
+        const double spanX=parameters.xmax-parameters.xmin, spanY=parameters.ymax-parameters.ymin;
+        const double tx=std::clamp(static_cast<double>(GetMouseX()-plotRect.x)/plotRect.width,0.0,1.0);
+        const double ty=std::clamp(static_cast<double>(plotRect.y+plotRect.height-GetMouseY())/plotRect.height,0.0,1.0);
+        probe_={parameters.xmin+tx*spanX,parameters.ymin+ty*spanY,parameters.center.z};
+        hasProbe_=true;
+    }
+    if (!hasProbe_)
+        probe_={(parameters.xmin+parameters.xmax)/2,(parameters.ymin+parameters.ymax)/2,parameters.center.z};
+}
+void Controls::drawHelp(const Rectangle& plotRect) {
+    probePoint(plotRect);
+    const bool single=parameters.chargeCount==1;
+    const double epsilon=dipole::softening(parameters);
+    const dipole::Charges c=dipole::charges(parameters);
+    const double rawPlus=dipole::length(probe_-c.plus), rawMinus=dipole::length(probe_-c.minus);
+    // Distances include the same softening the core applies before dividing.
+    const double rPlus=std::sqrt(rawPlus*rawPlus+epsilon*epsilon);
+    const double rMinus=std::sqrt(rawMinus*rawMinus+epsilon*epsilon);
+    const double potential=dipole::potential(probe_,parameters);
+    const dipole::Vec3 field=dipole::field(probe_,parameters);
+    const double fieldMagnitude=dipole::length(field);
+    const double moment=parameters.q*parameters.d;
+    const Rectangle vp=viewport();
+    const float panelWidth=std::min(560.0f,std::max(360.0f,vp.width-140.0f));
+    const float panelHeight=std::min(480.0f,vp.height-10.0f);
+    Rectangle panel{vp.x+vp.width-panelWidth,vp.y+8,panelWidth,panelHeight};
+    DrawRectangleRec(panel,Color{20,29,43,244});
+    DrawRectangleLinesEx(panel,1,Color{53,107,155,255});
+    const int x=static_cast<int>(panel.x+16);
+    float y=panel.y+14;
+    auto drawLine=[&](const char* text,int size,Color color,float advance) {
+        app::DrawTextUi(text,x,static_cast<int>(y),size,color); y+=advance;
+    };
+    char b[256];
+    drawLine("Formulas y resultados en tiempo real",19,SKYBLUE,26);
+    drawLine(view<3 ? "Mueve el raton sobre el mapa del corte para sondear el punto."
+                    : "Vista 3D: no hay corte, se evalua el ultimo punto sondeado.",
+             13,LIGHTGRAY,22);
+    y+=4;
+    std::snprintf(b,sizeof b,"Punto de evaluacion (corte z = %.4g m)",probe_.z);
+    drawLine(b,14,RAYWHITE,21);
+    std::snprintf(b,sizeof b,"x = %.4g m   y = %.4g m   z = %.4g m",probe_.x,probe_.y,probe_.z);
+    drawLine(b,14,RAYWHITE,21);
+    if (single) std::snprintf(b,sizeof b,"r = %.6g m",rPlus);
+    else std::snprintf(b,sizeof b,"r+ = %.6g m   r- = %.6g m",rPlus,rMinus);
+    drawLine(b,14,RAYWHITE,21);
+    y+=6;
+    std::snprintf(b,sizeof b,"p = q * d = (%.4g nC)(%.4g m) = %.4g nC*m",parameters.q,parameters.d,moment);
+    drawLine(b,14,Color{255,214,120,255},22);
+    if (single) std::snprintf(b,sizeof b,"V = k * q * (1/r) = %.5g V",potential);
+    else std::snprintf(b,sizeof b,"V = k * q * (1/r+ - 1/r-) = %.5g V",potential);
+    drawLine(b,14,Color{150,222,150,255},22);
+    std::snprintf(b,sizeof b,"|E| = |-grad V| = %.5g V/m",fieldMagnitude);
+    drawLine(b,14,Color{150,222,150,255},22);
+    std::snprintf(b,sizeof b,"E = (%.4g, %.4g, %.4g) V/m",field.x,field.y,field.z);
+    drawLine(b,14,LIGHTGRAY,22);
+    if (single) std::snprintf(b,sizeof b,"epsilon = max(0.001 * L, 0.000001) = %.4g m",epsilon);
+    else std::snprintf(b,sizeof b,"epsilon = max(0.001 * d, 0.000001) = %.4g m",epsilon);
+    drawLine(b,14,Color{255,214,120,255},22);
+    y+=6;
+    app::DrawTextUi("Convenciones: q en nC; k mostrada en unidades SI de 10^9.",x,static_cast<int>(y),13,LIGHTGRAY); y+=19;
+    app::DrawTextUi("E = -grad V con diferencias centradas, h = 0.05 * epsilon.",x,static_cast<int>(y),13,LIGHTGRAY); y+=19;
+    app::DrawTextUi("Corte de mapa y campo: z fisico = z del centro.",x,static_cast<int>(y),13,LIGHTGRAY); y+=19;
+    app::DrawTextUi(single ? "Vista 5 integra el campo de carga unica." : "Vista 5 integra el campo del dipolo.",
+                    x,static_cast<int>(y),13,LIGHTGRAY);
 }
 }

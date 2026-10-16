@@ -12,6 +12,9 @@ public:
     Renderer& operator=(const Renderer&) = delete;
     void update(const dipole::Parameters& p);
     void draw(Rectangle viewport, int view, const Visibility& visibility, bool cameraBlocked);
+    // Physical rectangle of the last 2D cut plot; empty for the spatial views.
+    // Controls use it to map the mouse onto the z = center.z cut plane.
+    Rectangle plotRectangle() const { return plotRect_; }
 private:
     struct Arrow { dipole::Vec3 point, field; };
     dipole::Parameters p_;
@@ -28,6 +31,7 @@ private:
     RenderTexture2D target_{};
     float yaw_[2] = {.65f, 1.57079632679f}, pitch_[2] = {.55f, 0}, zoom_[2] = {1, 1};
     bool orbiting_[2] = {false, false};
+    Rectangle plotRect_{};
     void drawPlane(Rectangle r, int view, const Visibility& v);
     void drawSpatial(Rectangle r, int view, const Visibility& v, bool blocked);
 };

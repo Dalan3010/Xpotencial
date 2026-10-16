@@ -137,6 +137,7 @@ void Renderer::drawPlane(Rectangle r,int view,const Visibility& v) {
     Rectangle plot{r.x+55+(r.width-160-static_cast<float>(spanX)*scale)/2,
                    r.y+30+(r.height-80-static_cast<float>(spanY)*scale)/2,
                    static_cast<float>(spanX)*scale,static_cast<float>(spanY)*scale};
+    plotRect_=plot;
     auto screen = [&](dipole::Vec3 p) {
         return Vector2{plot.x+static_cast<float>(p.x-p_.xmin)*scale,plot.y+plot.height-static_cast<float>(p.y-p_.ymin)*scale};
     };
@@ -345,6 +346,7 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
 }
 void Renderer::draw(Rectangle viewport,int view,const Visibility& visibility,bool cameraBlocked) {
     DrawRectangleRec(viewport,Color{249,250,252,255});
+    plotRect_={};
     if (view<3) drawPlane(viewport,view,visibility);
     else drawSpatial(viewport,view,visibility,cameraBlocked);
 }

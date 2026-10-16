@@ -51,7 +51,7 @@ int main(int argc,char** argv) {
             BeginDrawing();
             ClearBackground(Color{232,236,242,255});
             renderer.draw(controls.viewport(),controls.view,controls.visible,controls.blocksCamera());
-            dirty=controls.draw();
+            dirty=controls.draw(renderer.plotRectangle());
             if (controls.parameters.chargeCount!=titleMode) {
                 titleMode=controls.parameters.chargeCount;
                 SetWindowTitle(titleMode==1 ? "Carga única - simulador nativo" : "Dipolo eléctrico - simulador nativo");
