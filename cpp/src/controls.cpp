@@ -254,13 +254,50 @@ void Controls::drawHelp(const Rectangle& plotRect) {
     const double fieldMagnitude=dipole::length(field);
     const double moment=parameters.q*parameters.d;
     const Rectangle vp=viewport();
-    const float panelWidth=std::min(760.0f,std::max(360.0f,vp.width-140.0f));
-    const float panelHeight=std::min(560.0f,vp.height-10.0f);
-    Rectangle panel{vp.x+vp.width-panelWidth,vp.y+8,panelWidth,panelHeight};
+    const float panelWidth=std::min(860.0f,std::max(420.0f,vp.width-160.0f));
+    const float panelHeight=std::min(620.0f,vp.height-20.0f);
+    float panelX = vp.x+vp.width-panelWidth + formulaOffsetX_;
+    float panelY = vp.y+8 + formulaOffsetY_;
+    float clampPad = 4.0f;
+    panelX = std::clamp(panelX, clampPad, static_cast<float>(GetScreenWidth()) - panelWidth - clampPad);
+    panelY = std::clamp(panelY, 90.0f, static_cast<float>(GetScreenHeight()) - (formulaCollapsed_ ? 40.0f : panelHeight) - clampPad);
+    Rectangle panel{panelX, panelY, panelWidth, formulaCollapsed_ ? 36.0f : panelHeight};
     DrawRectangleRec(panel,Color{20,29,43,244});
-    DrawRectangleLinesEx(panel,1,Color{53,107,155,255});
-    const int x=static_cast<int>(panel.x+16);
-    float y=panel.y+14;
+    DrawRectangleLinesEx(panel,2,Color{53,107,155,255});
+    Rectangle header{panel.x, panel.y, panel.width, 36.0f};
+    DrawRectangleRec(header,Color{27,38,56,244});
+    DrawRectangleLinesEx(header,2,Color{53,107,155,255});
+    const char* collapseText = formulaCollapsed_ ? "[+]" : "[-]";
+    app::DrawTextUi("Fórmulas y resultados (arrástrame)", static_cast<int>(header.x+10), static_cast<int>(header.y+8), 17, SKYBLUE);
+    app::DrawTextUi(collapseText, static_cast<int>(header.x + header.width - 28), static_cast<int>(header.y+8), 18, RAYWHITE);
+    Rectangle collapseBtn{header.x + header.width - 36, header.y+4, 32, 28};
+    if (CheckCollisionPointRec(GetMousePosition(), header) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        Vector2 mp = GetMousePosition();
+        if (CheckCollisionPointRec(mp, collapseBtn)) {
+            formulaCollapsed_ = !formulaCollapsed_;
+        } else if (!formulaDragging_) {
+            formulaDragging_ = true;
+            formulaDragStartPos_ = mp;
+            formulaDragStartOffset_ = {formulaOffsetX_, formulaOffsetY_};
+        }
+    }
+    if (formulaDragging_) {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            Vector2 mp = GetMousePosition();
+            formulaOffsetX_ = formulaDragStartOffset_.x + (mp.x - formulaDragStartPos_.x);
+            formulaOffsetY_ = formulaDragStartOffset_.y + (mp.y - formulaDragStartPos_.y);
+            formulaOffsetX_ = std::clamp(formulaOffsetX_, clampPad - panelWidth, static_cast<float>(GetScreenWidth()) - clampPad);
+            formulaOffsetY_ = std::clamp(formulaOffsetY_, 90.0f - panelHeight, static_cast<float>(GetScreenHeight()) - clampPad);
+        } else {
+            formulaDragging_ = false;
+        }
+    }
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        formulaDragging_ = false;
+    }
+    if (formulaCollapsed_) return;
+    const int x=static_cast<int>(panel.x+20);
+    float y=panel.y+46;
 
     const Color formula{120,220,255,255};
     const Color result{57,255,20,255};
@@ -274,14 +311,14 @@ void Controls::drawHelp(const Rectangle& plotRect) {
     // Renders one equation line, shrinking the font until it fits the panel and
     // emphasising the highlighted (final-result) segment in neon green, faux bold.
     auto equation=[&](const std::vector<Seg>& segs,float advance) {
-        auto widthAt=[&](int size) {
+    auto widthAt=[&](int size) {
             float w=0;
             for (const auto& s:segs) w+=static_cast<float>(app::MeasureTextUi(s.text.c_str(),s.highlight ? size+1 : size));
             return w;
         };
-        int size=14;
-        const float available=panel.width-32.0f;
-        while (size>10 && widthAt(size)>available) --size;
+        int size=18;
+        const float available=panel.width-44.0f;
+        while (size>12 && widthAt(size)>available) --size;
         float cx=static_cast<float>(x);
         for (const auto& s:segs) {
             const int px=static_cast<int>(cx), sz=s.highlight ? size+1 : size;
@@ -292,44 +329,44 @@ void Controls::drawHelp(const Rectangle& plotRect) {
         y+=advance;
     };
 
-    plain("Formulas y resultados en tiempo real",19,SKYBLUE,26);
-    plain(view<3 ? "Mueve el raton sobre el mapa del corte para sondear el punto."
-                 : "Vista 3D: no hay corte, se evalua el ultimo punto sondeado.",13,muted,22);
+    plain("Fórmulas y resultados en tiempo real",22,SKYBLUE,30);
+    plain(view<3 ? "Mueve el ratón sobre el mapa del corte para sondear el punto."
+                 : "Vista 3D: no hay corte, se evalúa el último punto sondeado.",16,muted,26);
     y+=4;
-    plain("Punto de evaluacion (corte z = "+fixed(probe_.z,4)+" m)",14,label,21);
-    plain("x = "+fixed(probe_.x,4)+" m   y = "+fixed(probe_.y,4)+" m   z = "+fixed(probe_.z,4)+" m",14,label,21);
-    if (single) plain("r = "+fixed(rPlus,5)+" m",14,label,21);
-    else plain("r+ = "+fixed(rPlus,5)+" m   r- = "+fixed(rMinus,5)+" m",14,label,21);
-    y+=6;
+    plain("Punto de evaluación (corte z = "+fixed(probe_.z,4)+" m)",17,label,26);
+    plain("x = "+fixed(probe_.x,4)+" m   y = "+fixed(probe_.y,4)+" m   z = "+fixed(probe_.z,4)+" m",17,label,26);
+    if (single) plain("r = "+fixed(rPlus,5)+" m",17,label,26);
+    else plain("r+ = "+fixed(rPlus,5)+" m   r- = "+fixed(rMinus,5)+" m",17,label,26);
+    y+=10;
     equation({{"p = q·d",formula},
               {"  ==>  p = ",muted},
               {"("+fixed(parameters.q,2)+" nC) · ("+fixed(parameters.d,2)+" m)",formula},
               {" = ",muted},
-              {fixed(moment,2)+" nC·m",result,true}},22);
+              {fixed(moment,2)+" nC·m",result,true}},28);
     if (single) {
         equation({{"V = k·q·(1/r)",formula},
                   {"  ==>  V = ",muted},
                   {"("+scientific(parameters.k,2)+") · ("+fixed(parameters.q,2)+" nC) · (1/"+fixed(rPlus,2)+")",formula},
                   {" = ",muted},
-                  {fixed(potential,2)+" V",result,true}},22);
+                  {fixed(potential,2)+" V",result,true}},28);
     } else {
         equation({{"V = k·q·(1/r+ - 1/r-)",formula},
                   {"  ==>  V = ",muted},
                   {"("+scientific(parameters.k,2)+") · ("+fixed(parameters.q,2)+" nC) · (1/"+fixed(rPlus,2)+" - 1/"+fixed(rMinus,2)+")",formula},
                   {" = ",muted},
-                  {fixed(potential,2)+" V",result,true}},22);
+                  {fixed(potential,2)+" V",result,true}},28);
     }
     equation({{"|E| = |-grad V|",formula},
               {"  ==>  |E| = |(Ex, Ey, Ez)| = sqrt(Ex²+Ey²+Ez²)",formula},
               {" = ",muted},
-              {fixed(fieldMagnitude,2)+" V/m",result,true}},22);
-    plain("E = ("+fixed(field.x,3)+", "+fixed(field.y,3)+", "+fixed(field.z,3)+") V/m",13,muted,20);
-    if (single) plain("epsilon = max(0.001 · L, 1e-6) = "+fixed(epsilon,5)+" m",13,muted,20);
-    else plain("epsilon = max(0.001 · d, 1e-6) = "+fixed(epsilon,5)+" m",13,muted,20);
-    y+=6;
-    plain("Convenciones: q en nC; k mostrada en unidades SI de 10^9.",13,muted,19);
-    plain("E = -grad V con diferencias centradas, h = 0.05 * epsilon.",13,muted,19);
-    plain("Corte de mapa y campo: z fisico = z del centro.",13,muted,19);
-    plain(single ? "Vista 5 integra el campo de carga unica." : "Vista 5 integra el campo del dipolo.",13,muted,19);
+              {fixed(fieldMagnitude,2)+" V/m",result,true}},28);
+    plain("E = ("+fixed(field.x,3)+", "+fixed(field.y,3)+", "+fixed(field.z,3)+") V/m",16,muted,24);
+    if (single) plain("epsilon = max(0.001 · L, 1e-6) = "+fixed(epsilon,5)+" m",16,muted,24);
+    else plain("epsilon = max(0.001 · d, 1e-6) = "+fixed(epsilon,5)+" m",16,muted,24);
+    y+=10;
+    plain("Convenciones: q en nC; k mostrada en unidades SI de 10^9.",16,muted,23);
+    plain("E = -grad V con diferencias centradas, h = 0.05 * epsilon.",16,muted,23);
+    plain("Corte de mapa y campo: z físico = z del centro.",16,muted,23);
+    plain(single ? "Vista 5 integra el campo de carga única." : "Vista 5 integra el campo del dipolo.",16,muted,23);
 }
 }

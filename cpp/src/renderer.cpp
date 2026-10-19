@@ -329,7 +329,10 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     char caption[180];
     if (isStreamlines) {
         std::snprintf(caption,sizeof(caption),"Líneas de flujo del campo eléctrico integradas | %zu rutas | metros físicos",streamlines_.size());
-    } else std::snprintf(caption,sizeof(caption),"ALTURA visual = %.3g * clamp(V/%.3g, -1, 1); NO es z físico",.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin),gridLimit_);
+    } else {
+        const double visHeight = .3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin);
+        std::snprintf(caption,sizeof(caption),"ALTURA visual = %.3g * signo(V) * (|V/%.3g|^0.5); NO es z físico",visHeight,gridLimit_);
+    }
     app::DrawTextUi(caption,static_cast<int>(r.x+8),static_cast<int>(r.y+8),15,DARKGRAY);
     if (isStreamlines) {
         app::DrawTextUi(p_.chargeCount==1

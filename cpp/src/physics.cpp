@@ -392,7 +392,9 @@ Triangles heightfield(const Grid& g, double limit, double height) {
         Vec3 point = g.point(x,y);
         const double value = g.at(x,y);
         if (!std::isfinite(value)) throw std::invalid_argument("Muestra de altura no finita.");
-        point.z = std::clamp(value/limit,-1.0,1.0)*height;
+        const double t = std::clamp(std::abs(value/limit), 0.0, 1.0);
+        const double exponent = 0.5;
+        point.z = std::copysign(std::pow(t, exponent), value) * height;
         return Sample{point,value};
     };
     for (int y=0;y<g.n-1;++y) for (int x=0;x<g.n-1;++x) {
