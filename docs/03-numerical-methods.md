@@ -267,7 +267,7 @@ Derived by counting calls in the code paths, not measured:
 |---|---|---|
 | Grid: potential evaluations | 4 900 | 22 500 |
 | Arrows: `field()` calls × 6 potential evaluations | 196 × 6 = 1 176 | 900 × 6 = 5 400 |
-| Contour cell tests (17 passes) | 80 937 | 377 217 |
+| Contour cell tests (17 passes) | 80 937 | 377 417 |
 | Height mesh vertices | 28 566 | 133 206 |
 | Streamlines: potential evaluations (observed 2 608 steps × 4 stages × 6) | ≈ 62 600 | worst case 1 536 000 |
 
