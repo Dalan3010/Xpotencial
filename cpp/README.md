@@ -126,9 +126,13 @@ parameters and visibility defaults, without forcibly resetting the camera.
   absolute samples. Clipping affects visualization only, not physics.
 - **Height surface:** x/y are in meters, but the vertical coordinate is
   **visual normalized potential**, NOT physical z or potential in meters:
-  `height=H*clamp(V/colorLimit,-1,1)`, `H=0.3*min(domain spans)`.
-  The equation is displayed on the plot. Charge markers follow their XY
-  positions on this heightfield, not their physical z.
+  `height=H*sign(V)*sqrt(|V|/colorLimit)`, `H=0.3*min(domain spans)`.
+  The square root compresses the near-charge peak. The equation is displayed on
+  the plot. Charge markers follow their XY positions on this heightfield, not
+  their physical z; note that the lifted contours and charge markers in this
+  view use a linear `V/colorLimit` mapping, so they only meet the surface at
+  `V=0` and `V=±colorLimit` (a known display inconsistency documented in
+  [docs/07-limitations-and-threats-to-validity.md](../docs/07-limitations-and-threats-to-validity.md)).
 - **Retained core APIs:** radial-field and volume/equipotential routines remain
   available and tested as numerical functionality; no radial-magnitude surface,
   transported-arrow overlay, or related caption is shown in the native views.
