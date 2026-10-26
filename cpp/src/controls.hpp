@@ -25,6 +25,13 @@ private:
     std::string buffer_, error_;
     dipole::Vec3 probe_{};   // Last physical point sampled on the cut plane.
     bool hasProbe_ = false;
+    // Formula panel drag state
+    float formulaOffsetX_ = 0.0f;
+    float formulaOffsetY_ = 0.0f;
+    bool formulaDragging_ = false;
+    Vector2 formulaDragStartPos_ = {0,0};
+    Vector2 formulaDragStartOffset_ = {0,0};
+    bool formulaCollapsed_ = false;
     bool apply(int index, double value);
     bool parameterRow(int index, float y);
     void probePoint(const Rectangle& plotRect);
