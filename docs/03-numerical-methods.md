@@ -79,9 +79,9 @@ percentile of `|V|` (`physics.cpp:406-417`). The zero level is drawn thicker
 ### Cost
 
 The extraction is `17` passes over `(n−1)²` cells: 80 937 cell tests at the
-default `n=70`, 377 217 at the maximum `n=150`. Only the first pass is
-`O(n²)` potential evaluations (the grid build); the other sixteen reuse
-`grid.values`.
+default `n=70`, 377 417 at the maximum `n=150`. The `O(n²)` potential
+evaluations were already paid by the grid build; all seventeen passes reuse
+`grid.values` and add no physics work.
 
 ## 3. Height surface
 
