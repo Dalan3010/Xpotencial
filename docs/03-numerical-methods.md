@@ -85,34 +85,35 @@ evaluations were already paid by the grid build; all seventeen passes reuse
 
 ## 3. Height surface
 
-The 3D surface uses a **non-linear** height mapping (`physics.cpp:386-404`):
+The 3D surface uses a **non-linear** height mapping (`physics.cpp:386-410`):
 
 ```
-t  = clamp( |V| / limit , 0, 1 )
-z  = sign(V) · t^0.5 · H
-H  = 0.3 · min( spanX, spanY )
+peak = max |V| over the sampled grid, floored at 1e-9
+t    = clamp( |V| / peak , 0, 1 )
+z    = sign(V) · t^0.5 · H
+H    = 0.3 · min( spanX, spanY )
 ```
 
-Evidence for `H`: `renderer.cpp:154`. The square root compresses the large
-values near the charges so that the mid-field structure remains visible.
+Evidence for `H`: `renderer.cpp:155`. The square root compresses the large
+values near the charges so that the mid-field structure remains visible;
+normalizing by the sampled maximum (not the 95th percentile) keeps the near-charge
+usually a sharp apex instead of a clipped plateau.
 
 Geometry: two triangles per grid cell, emitted directly as a **triangle soup**
 (`a,b,c` and `a,c,d`), six vertices per cell, no index buffer
-(`physics.cpp:400-403`). At `n=150` that is 133 206 vertices.
+(`physics.cpp:402-406`). At `n=150` that is 133 206 vertices.
 
-**Consistency caveat (important for figures).** The surface uses the `sqrt` law,
-but the contour curves lifted onto that surface and the charge markers in that
-view use a **linear** mapping:
+**Overlay consistency.** The contour curves lifted onto that surface and the
+charge markers in that view call the same `visualHeight(V, peak, H)` helper, so
+they lie on the surface by construction:
 
 ```
-z_lifted_contour = clamp( level / limit , −1, 1 ) · H + 0.002·span   (renderer.cpp:315-320)
-z_marker         = clamp( V / limit , −1, 1 ) · H                    (renderer.cpp:332-334)
+z_lifted_contour = visualHeight( level , peak , H ) + 0.002·span   (renderer.cpp:319)
+z_marker         = visualHeight( V , peak , H )                    (renderer.cpp:334)
 ```
 
-The three coincide only at `V = 0` and `V = ±limit`. A screenshot of that view
-therefore shows contours and markers floating off the surface in the
-intermediate range. This must be described as a known limitation
-(section 07), not as a physical feature.
+The vertical axis remains a visual, peak-normalized encoding; it is not physical
+height and must not be read quantitatively.
 
 ## 4. Volume extraction: marching tetrahedra
 
@@ -160,21 +161,27 @@ article must not confuse them.
 Radius is an **absolute** value, `sphereRadius` (default 3 m, range 0.5..10),
 not a multiplier (`physics.hpp:19`; `physics.cpp:48-49`).
 
-### 5.2 The rendered single-charge view (billboards)
+### 5.2 The rendered single-charge view (wireframe spheres)
 
-The GUI draws **five billboard circles**, i.e. the silhouette of five spheres,
-not meshes:
+The GUI draws **five concentric wireframe spheres**:
 
 - radii `{0.2, 0.4, 0.6, 0.8, 1.0} × L`;
-- 96 segments per circle, drawn with `DrawLine3D`;
-- each circle lies in the plane through the charge perpendicular to the camera
-  forward vector, with orthonormal in-plane basis `u, v`
-  (`renderer.cpp:75-96`, `298-301`).
+- `DrawSphereWires(center, radius, rings = 8, slices = 16)` at low alpha, a light
+  latitude/longitude lattice that shows depth and rotation;
+- plus one **exact perspective silhouette** per sphere (`renderer.cpp:78-99`):
+  the tangent circle at `center − (r²/d)·forward` with radius
+  `r·sqrt(1 − (r/d)²)`, drawn with 160 segments. The rim is therefore a smooth
+  circle that coincides with the wireframe limb, so each globe reads as a sphere
+  instead of a faceted polyhedron. It is camera-dependent by construction (it is
+  the true silhouette), not a flat billboard pasted on the screen;
+- world-space lattice geometry, so orbiting the camera reveals the depth of the
+  concentric shells.
 
-Because the plane is rebuilt from the camera basis every frame, the circles look
-like perfect spheres from any orbit angle. They are an **illustration of
-concentric equipotential surfaces**, not a sampled isosurface of the numerical
-field. Any caption claiming "isosurface extraction" would be wrong.
+They are an **illustration of concentric equipotential surfaces** — `V = kq/r`
+is constant on each sphere — not a sampled isosurface of the numerical field.
+Any caption claiming "isosurface extraction" would be wrong. Earlier revisions
+drew camera-facing billboard circles, which looked pasted on and gave no depth
+cue; that is no longer the case.
 
 ## 6. Field lines: RK4 on the normalized field
 

@@ -112,7 +112,13 @@ Grid count and endpoints; zero bisector non-degenerate; constant cell empty;
 saddle yields two segments; exact edge yields one segment; isolated exact vertex
 yields nothing; non-finite level rejected; sphere vertex count, radius, poles,
 watertightness, outward winding, `q`-independent geometry and `q`-scaled vertex
-values; `150²` heightfield vertex count and bounded `|z|`.
+values; `150²` heightfield vertex count and bounded `|z|`. The height mapping is
+covered separately by `heightEncodingTests`: `peakMagnitude` returns the max
+`|V|` and rejects empty/non-finite samples; `visualHeight` maps `0 → 0`,
+`±peak → ±H`, follows the square root at half scale, is strictly increasing
+below the peak with no shared heights, and rejects invalid scales; a synthetic
+grid spanning the peak yields `max |z| = H` with full height attained by exactly
+the peak samples only (no percentile plateau).
 
 ## 4. Tolerances actually used
 
@@ -180,6 +186,6 @@ sets `chargeCount = 1`, so view 4's single-charge branch is not exercised.
 | "Level-set extraction is deterministic including degenerate cases" | **Supported** — tested |
 | "The system builds and runs on Linux with a real GPU" | **Supported on one machine** — verified |
 | "The GUI is correct" | **Not supported** — untested |
-| "The visuals are accurate to the model" | **Partially** — encodings documented, no visual verification; one mapping mismatch known |
+| "The visuals are accurate to the model" | **Partially** — encodings documented and the height law is shared across overlays, but there is no visual verification |
 | "Performance is adequate for real-time use" | **Not measured** — do not claim |
 | "The regularized model is physically valid near the charges" | **Reframe required** — it is a smeared-charge model, not point charges |

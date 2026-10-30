@@ -59,7 +59,7 @@ Suggested length: 8–10 pages in a two-column format, with 6–8 figures.
 |---|---|---|---|
 | F1 | System pipeline: controls → core → caches → GPU | derived from doc 04 | ready to draw |
 | F2 | Three 2D views side by side (map, contours, vectors), defaults | views 0-2 | capture needed |
-| F3 | Height surface with the sqrt law and its caption | view 3 | capture needed; **fix overlay mismatch first** |
+| F3 | Height surface with the sqrt law, shared overlays and its caption | view 3 | capture needed |
 | F4 | Dipole field lines with markers | view 4, dipole | capture needed |
 | F5 | Single-charge concentric circles | view 4, single charge | capture needed |
 | F6 | Help/probe panel showing substituted values | help overlay | capture needed |
@@ -70,7 +70,8 @@ Caption rules that follow from the code:
 
 - Always state `q`, `k`, `d`, orientation, domain, `resolution`, and the
   **display limit** in volts. Without the limit the colours are unreadable.
-- For view 3, state that the vertical axis is `sign(V)·sqrt(|V|/limit)·H`.
+- For view 3, state that the vertical axis is `sign(V)·sqrt(|V|/peak)·H`, with
+  `peak` the maximum sampled `|V|`, and that contours and markers share that law.
 - For view 4, state the seed count, seed angle, step size, and that markers show
   direction, not velocity.
 - Never label the single-charge circles as extracted isosurfaces.
@@ -99,7 +100,7 @@ Caption rules that follow from the code:
 | The gradient is accurate to 1e-5 | `core_tests.cpp:42-44`, one configuration | **Write it with the qualifier** |
 | The system renders in real time | no measurement | **Do not write** |
 | The simulation is accurate near the charges | softening changes the model | **Reframe** as smeared charge |
-| The 3D view is a quantitative surface | sqrt law + linear overlays | **Do not write** |
+| The 3D view is a quantitative surface | peak-normalized sqrt law | **Do not write** |
 | The GUI behaves correctly | untested | **Do not write** |
 | The tool improves learning | no study | **Do not write** |
 
@@ -141,7 +142,8 @@ See doc 07 §7 for the full list. The three that most strengthen a submission:
 - **Never quote the assertion count as a test count.** It is a loop-expanded
   counter.
 - **Do not present `--smoke` as validation.** It proves execution, not output.
-- **Do not use view 3 quantitatively** until the overlay mapping is unified.
+- **Do not use view 3 quantitatively.** Its vertical axis is a peak-normalized
+  square root, and contours and markers share that visual, non-physical law.
 - **State the colour clipping.** A reader who assumes a linear absolute colour
   scale will misread every figure.
 - **Report the single-machine limitation** in the threats-to-validity

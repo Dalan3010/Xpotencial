@@ -72,26 +72,39 @@ void lineArrow(Vector2 a,Vector2 b,Color c) {
 bool chargeIsPositive(const dipole::Parameters& p,int index) {
     return p.chargeCount==1 ? p.q>=0 : index==0;
 }
-// Five concentric equipotential circles drawn as billboards: each lies in the plane
-// through the charge perpendicular to the camera forward vector, so it renders as the
-// exact silhouette of a sphere (a perfect circle) from any orbit angle.
-void equipotentialCircles(Vector3 center,float reference,Vector3 forward) {
+// Exact perspective silhouette of a sphere: the tangent circle sits r^2/d in front of
+// the centre with radius r*sqrt(1-(r/d)^2). Drawing it with many segments gives a smooth
+// rim, so the wireframe reads as a sphere instead of a faceted polyhedron.
+void sphereSilhouette(Vector3 center,Vector3 cameraPosition,float radius,Color color) {
+    const float distance=Vector3Distance(center,cameraPosition);
+    if (distance<=radius*1.001f) return; // Camera inside the sphere: no silhouette.
+    const Vector3 forward=Vector3Normalize(Vector3Subtract(center,cameraPosition));
+    const Vector3 tangentCenter=Vector3Subtract(center,Vector3Scale(forward,radius*radius/distance));
+    const float tangentRadius=radius*std::sqrt(1.0f-(radius/distance)*(radius/distance));
     const Vector3 referenceAxis=std::abs(forward.y)<.999f ? Vector3{0,1,0} : Vector3{0,0,1};
     const Vector3 u=Vector3Normalize(Vector3CrossProduct(forward,referenceAxis));
-    const Vector3 v=Vector3Normalize(Vector3CrossProduct(forward,u)); // orthonormal to u in-plane
-    const Color circle{90,96,104,255};
-    constexpr int segments=96;
+    const Vector3 v=Vector3Normalize(Vector3CrossProduct(forward,u));
+    constexpr int segments=160;
+    Vector3 previous{};
+    for (int i=0;i<=segments;++i) {
+        const float t=2*PI*static_cast<float>(i)/segments;
+        const float c=std::cos(t)*tangentRadius, s=std::sin(t)*tangentRadius;
+        const Vector3 current{tangentCenter.x+u.x*c+v.x*s,tangentCenter.y+u.y*c+v.y*s,
+                              tangentCenter.z+u.z*c+v.z*s};
+        if (i>0) DrawLine3D(previous,current,color);
+        previous=current;
+    }
+}
+// Five concentric equipotential spheres: V = kq/r is constant on each one, so they are
+// real 3D wireframe globes that orbit with the camera. A light lattice gives the depth
+// cue and a smooth rim keeps the outline round; low-poly wires alone looked faceted.
+void equipotentialSpheres(Vector3 center,float reference,Vector3 cameraPosition) {
+    constexpr int rings=8, slices=16;
     constexpr float radii[]={.2f,.4f,.6f,.8f,1.0f};
     for (const float factor : radii) {
         const float radius=reference*factor;
-        Vector3 previous{center.x+u.x*radius,center.y+u.y*radius,center.z+u.z*radius};
-        for (int i=1;i<=segments;++i) {
-            const float t=2*PI*static_cast<float>(i)/segments;
-            const float c=std::cos(t)*radius, s=std::sin(t)*radius;
-            const Vector3 current{center.x+u.x*c+v.x*s,center.y+u.y*c+v.y*s,center.z+u.z*c+v.z*s};
-            DrawLine3D(previous,current,circle);
-            previous=current;
-        }
+        sphereSilhouette(center,cameraPosition,radius,Color{70,78,90,215});
+        DrawSphereWires(center,radius,rings,slices,Color{86,94,104,120});
     }
 }
 }
@@ -137,6 +150,7 @@ void Renderer::update(const dipole::Parameters& p) {
     if (!planeChanged) return;
     grid_=dipole::makeGrid(p);
     gridLimit_=dipole::displayLimit(grid_.values);
+    gridPeak_=dipole::peakMagnitude(grid_.values);
     contours_.clear();
     for (int i=-8;i<=8;++i) {
         const double level=gridLimit_*i/8;
@@ -152,7 +166,7 @@ void Renderer::update(const dipole::Parameters& p) {
         arrows_.push_back({point,e});
     }
     const double height=.3*std::min(p.xmax-p.xmin,p.ymax-p.ymin);
-    const auto surfaceData=dipole::heightfield(grid_,gridLimit_,height);
+    const auto surfaceData=dipole::heightfield(grid_,gridPeak_,height);
     if (surface_.vertices) { UnloadMesh(surface_); surface_={}; }
     surface_=gpuMesh(surfaceData,gridLimit_,{(p.xmin+p.xmax)/2,(p.ymin+p.ymax)/2,0});
     std::vector<Color> pixels(static_cast<size_t>(grid_.n*grid_.n));
@@ -296,9 +310,7 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     BeginMode3D(camera);
     if (isStreamlines) {
         if (p_.chargeCount==1) {
-            // Billboard circles must be emitted inside the 3D pass.
-            equipotentialCircles(streamCenter,static_cast<float>(dipole::referenceLength(p_)),
-                                 Vector3Normalize(Vector3Subtract(camera.target,camera.position)));
+            equipotentialSpheres(streamCenter,static_cast<float>(dipole::referenceLength(p_)),camera.position);
         } else {
             for (const auto& path : streamlines_) {
                 for (size_t i=1;i<path.points.size();++i) {
@@ -315,7 +327,7 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     if (!isStreamlines && v.contours) {
         const double height=.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin);
         for (auto segment : contours_) {
-            segment.a.z=segment.b.z=std::clamp(segment.level/gridLimit_,-1.0,1.0)*height+.002*span;
+            segment.a.z=segment.b.z=dipole::visualHeight(segment.level,gridPeak_,height)+.002*span;
             DrawLine3D(world(segment.a,origin),world(segment.b,origin),Color{28,35,48,180});
         }
     }
@@ -330,7 +342,7 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
         for (int i=0;i<p_.chargeCount;++i) {
             auto point=i==0 ? c.plus : c.minus;
             if (!isStreamlines) {
-                point.z=.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin)*std::clamp(dipole::potential({point.x,point.y,p_.center.z},p_)/gridLimit_,-1.0,1.0);
+                point.z=dipole::visualHeight(dipole::potential({point.x,point.y,p_.center.z},p_),gridPeak_,.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin));
             }
             chargePoints[i]=world(point,origin);
             DrawSphere(chargePoints[i],extent*.012f,chargeIsPositive(p_,i) ? MAROON : DARKBLUE);
@@ -379,7 +391,7 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
         std::snprintf(caption,sizeof(caption),"Líneas de flujo del campo eléctrico integradas | %zu rutas | metros físicos",streamlines_.size());
     } else {
         const double visHeight = .3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin);
-        std::snprintf(caption,sizeof(caption),"ALTURA visual = %.3g * signo(V) * (|V/%.3g|^0.5); NO es z físico",visHeight,gridLimit_);
+        std::snprintf(caption,sizeof(caption),"ALTURA visual = H * signo(V) * sqrt(|V|/|V|máx); H=%.3g, |V|máx=%.3g; NO es z físico",visHeight,gridPeak_);
     }
     app::DrawTextUi(caption,static_cast<int>(r.x+8),static_cast<int>(r.y+8),15,DARKGRAY);
     if (isStreamlines) {

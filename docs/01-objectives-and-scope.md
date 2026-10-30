@@ -97,7 +97,8 @@ over-claiming in an article.
 |---|---|
 | Reference length `L` | `d` for the dipole; `0.5·min(spanX, spanY)` for a single charge (`physics.cpp:65-68`) |
 | Softening `ε` | `max(0.001·L, 1e-6)` metres (`physics.cpp:69`) |
-| Display limit | 95th percentile of `|V|` over the grid, floored at `1e-9`, used for all colour and height mapping (`physics.cpp:406-417`) |
+| Display limit | 95th percentile of `|V|` over the grid, floored at `1e-9`, used for colour and contour levels (`physics.cpp:410-421`) |
+| Height peak | Maximum sampled `|V|` over the grid, floored at `1e-9`; the height surface, its lifted contours and its charge markers all use `visualHeight(V, peak, H)` (`physics.cpp:422-431`) |
 | Plane plot | The 2D views (indices 0-2) rendered at `z = center.z` |
 | Stream view | View index 4, the 3D field-line / equipotential-circle view |
 | Height view | View index 3, the 3D surface |

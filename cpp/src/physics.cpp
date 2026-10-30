@@ -383,8 +383,14 @@ Triangles sphere(const Parameters& p) {
     }
     return out;
 }
-Triangles heightfield(const Grid& g, double limit, double height) {
-    if (g.n<2 || g.values.size()!=static_cast<size_t>(g.n*g.n) || !std::isfinite(limit) || limit<=0 || !std::isfinite(height) || height<=0)
+double visualHeight(double value, double scale, double height) {
+    if (!std::isfinite(value) || !std::isfinite(scale) || !std::isfinite(height) || scale<=0 || height<=0)
+        throw std::invalid_argument("Escala de altura inválida.");
+    const double t = std::clamp(std::abs(value)/scale, 0.0, 1.0);
+    return std::copysign(std::sqrt(t)*height, value);
+}
+Triangles heightfield(const Grid& g, double scale, double height) {
+    if (g.n<2 || g.values.size()!=static_cast<size_t>(g.n*g.n) || !std::isfinite(scale) || scale<=0 || !std::isfinite(height) || height<=0)
         throw std::invalid_argument("Campo de altura inválido.");
     Triangles out;
     out.reserve(static_cast<size_t>(6*(g.n-1)*(g.n-1)));
@@ -392,9 +398,7 @@ Triangles heightfield(const Grid& g, double limit, double height) {
         Vec3 point = g.point(x,y);
         const double value = g.at(x,y);
         if (!std::isfinite(value)) throw std::invalid_argument("Muestra de altura no finita.");
-        const double t = std::clamp(std::abs(value/limit), 0.0, 1.0);
-        const double exponent = 0.5;
-        point.z = std::copysign(std::pow(t, exponent), value) * height;
+        point.z = visualHeight(value,scale,height);
         return Sample{point,value};
     };
     for (int y=0;y<g.n-1;++y) for (int x=0;x<g.n-1;++x) {
@@ -414,5 +418,14 @@ double displayLimit(const std::vector<double>& values) {
     const size_t index = static_cast<size_t>(.95*(sorted.size()-1));
     std::nth_element(sorted.begin(),sorted.begin()+index,sorted.end());
     return std::max(sorted[index],1e-9);
+}
+double peakMagnitude(const std::vector<double>& values) {
+    if (values.empty()) throw std::invalid_argument("No hay muestras de altura.");
+    double peak = 0;
+    for (double value : values) {
+        if (!std::isfinite(value)) throw std::invalid_argument("Muestra de altura no finita.");
+        peak = std::max(peak,std::abs(value));
+    }
+    return std::max(peak,1e-9);
 }
 }

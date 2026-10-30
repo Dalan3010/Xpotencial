@@ -75,7 +75,7 @@ article from this material.
 | 2 | Equipotential contours (17 levels, CPU marching squares) |
 | 3 | Electric-field vector overlay |
 | 4 | Potential height surface `V(x,y)` |
-| 5 | 3D view: single charge shows concentric equipotential spheres (circles) with no radial streamlines; dipole keeps radial field streamlines and direction markers |
+| 5 | 3D view: single charge shows five concentric equipotential wireframe spheres with no radial streamlines; dipole keeps radial field streamlines and direction markers |
 
 ## Physics conventions
 

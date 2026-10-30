@@ -35,10 +35,9 @@ so it is deliberately blunt.
 
 | Limitation | Detail | Evidence |
 |---|---|---|
-| Height surface and its overlays use different mappings | The surface is `sign(V)·sqrt(|V|/limit)·H`; lifted contours and charge markers are **linear** in `V/limit`. They coincide only at `V = 0` and `V = ±limit` | `physics.cpp:393-398` vs `renderer.cpp:315-320`, `332-334` |
 | Legend bottom label is wrong | The negative end reuses the positive string, so it prints `+<limit> V` at the bottom of the gradient | `renderer.cpp:53-56` |
 | Arrow caption reports a different quantity | The caption prints max full-3D `|E|` while arrows encode `|E_xy|` | `renderer.cpp:151`, `194`, `227` |
-| "3D spheres" are billboards | Five concentric circles, not isosurfaces of the numerical field or sphere meshes | `renderer.cpp:75-96` |
+| Equipotential spheres are illustrative wireframes | Five `DrawSphereWires` globes at fixed radii with a camera-dependent tangent silhouette, not extracted isosurfaces of the numerical field | `renderer.cpp:78-109` |
 | No quantitative 3D axes | Labels only, no ticks; a reader cannot read a value off the 3D pane | `renderer.cpp:362-367` |
 | Unlit rendering, no normals or texture coordinates | Shape is conveyed by silhouette and vertex colour only | `renderer.cpp:26-47` |
 | The vector view draws the heatmap underneath | Arrows compete with a colour field using the same variable | `renderer.cpp:178` |
@@ -64,11 +63,11 @@ the others are recorded so they cannot silently propagate into the article.
 
 | Mismatch | Code says | Prose said | Status |
 |---|---|---|---|
-| Height law | `sign(V)·(|V|/limit)^0.5·H` (`physics.cpp:393-398`) | `H·clamp(V/colorLimit,−1,1)`, i.e. linear (`cpp/README.md:128-129`) | **Corrected in this branch** |
+| Height law | Surface, lifted contours and markers share `visualHeight() = sign(V)·sqrt(|V|/peak)·H` (`physics.cpp:386-391`, `renderer.cpp:319`, `334`) | Prose previously described a linear `H·clamp(V/colorLimit,−1,1)` overlay mismatch | **Resolved in this branch** — unified peak-normalized law |
 | Repository layout | `odd/` is gitignored (`.gitignore`) | Listed as part of the layout (`README.md:25`) | Corrected in this branch |
 | Help panel `h` | `h = max(1e-6, 0.05ε)` (`physics.cpp:78`) | `h = 0.05·epsilon`, floor omitted (`controls.cpp:371`) | Recorded; only matters for a single charge with a near-minimum domain |
 | Legend bottom label | Correct gradient, wrong text (`renderer.cpp:53-56`) | Documented as a gradient from `+limit` to `−limit` | Recorded; a known display defect |
-| "Five equipotential spheres" | Billboard circles (`renderer.cpp:75-96`) | Reads as spheres | Recorded; describe as silhouettes |
+| "Five equipotential spheres" | Wireframe globes + exact tangent silhouette (`renderer.cpp:78-109`) | Previously camera-facing billboard circles | Resolved in this branch; still illustrative, not extracted isosurfaces |
 
 ## 6. Threats to validity (for a paper)
 
@@ -103,7 +102,7 @@ The following conclusions are **not** supported by the current evidence and
 should not appear in an article without new experiments:
 
 1. that the simulator is numerically accurate to a stated error bound;
-2. that the visuals are faithful (one mapping mismatch is known);
+2. that the visuals are faithful (encodings are documented but not visually verified);
 3. that it improves learning outcomes;
 4. that it scales to larger grids in real time;
 5. that it is portable beyond the tested environment.
@@ -117,5 +116,5 @@ should not appear in an article without new experiments:
 | Streamline convergence: halve `stepSize` and compare endpoint error and point count | Integrator reliability | Low |
 | Timing sweep over `n`, density, seed count | Real performance claims and a work model | Low |
 | Screenshot set with fixed parameters | Visual reproducibility, figure generation | Low |
-| Corrected height-view overlays | Removes the known mapping inconsistency before showing that figure | Medium — code change |
+| ~~Corrected height-view overlays~~ — **done** | Surface, lifted contours and charge markers now all call `visualHeight()` normalized by the sampled peak, so the former overlay mismatch is resolved; what remains is visual verification of the rendered figure | Implemented |
 | Manual usability protocol | Any didactic claim | High |

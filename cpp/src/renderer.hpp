@@ -22,7 +22,7 @@ private:
     std::vector<dipole::Segment> contours_;
     std::vector<Arrow> arrows_;
     std::vector<dipole::Streamline> streamlines_;
-    double gridLimit_ = 1, fieldMax_ = 1;
+    double gridLimit_ = 1, gridPeak_ = 1, fieldMax_ = 1;
     double animationPhase_ = 0;
     bool initialized_ = false;
     Texture2D heatmap_{};

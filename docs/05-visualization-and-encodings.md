@@ -12,8 +12,8 @@ about*.
 | 0 | Mapa de potencial | Heatmap of `V` over the plane `z = center.z`, with 10×10 grid, 17 contours, charges, legend | `renderer.cpp:178-230` |
 | 1 | Equipotenciales | Same contours on a flat background, coloured by level, no heatmap | `renderer.cpp:179`, `186-188` |
 | 2 | Campo vectorial | Heatmap **plus** XY arrows at every sample | `renderer.cpp:178`, `189-199` |
-| 3 | Superficie altura | 3D vertex-coloured surface of `sign(V)·sqrt(|V|/limit)·H`, optional grid, optional lifted contours, charge markers | `renderer.cpp:309-338`; `physics.cpp:386-404` |
-| 4 | Líneas campo 3D | Dipole: cached streamlines with animated direction markers. Single charge: five concentric billboard circles | `renderer.cpp:298-308`, `339-356` |
+| 3 | Superficie altura | 3D vertex-coloured surface of `sign(V)·sqrt(|V|/peak)·H`, optional grid, optional lifted contours, charge markers, all sharing `visualHeight()` | `renderer.cpp:309-339`; `physics.cpp:386-433` |
+| 4 | Líneas campo 3D | Dipole: cached streamlines with animated direction markers. Single charge: five concentric 3D wireframe spheres with smooth perspective silhouettes | `renderer.cpp:313-317`, `386-405` |
 
 View selection is a plain integer in `controls` (`controls.cpp:137-138`).
 
@@ -38,7 +38,8 @@ colour   = neutral + (end − neutral)·|t|
 ```
 
 Evidence: `renderer.cpp:13-21`. The mix is a per-channel linear interpolation
-towards the signed endpoint; `limit` is the same `displayLimit` used everywhere.
+towards the signed endpoint; `limit` is the same `displayLimit` used by colour,
+contours and the 2D views. The view-3 height scale is separate (`peak`, §4).
 
 `displayLimit` is the **95th percentile of |V|** over the sampled grid, computed
 with `nth_element` at index `floor(0.95·(N−1))` and floored at `1e-9`
@@ -90,24 +91,34 @@ paper figure reusing this caption should reword it.
 ## 4. Height encoding (view 3)
 
 ```
-H  = 0.3 · min(spanX, spanY)
-z  = sign(V) · (|V|/limit)^0.5 · H
+H    = 0.3 · min(spanX, spanY)
+peak = max |V| over the sampled grid          (floored at 1e-9)
+z    = sign(V) · (|V|/peak)^0.5 · H
 ```
 
-Evidence: `physics.cpp:393-398`; `H` at `renderer.cpp:154`.
+Evidence: `physics.cpp:386-391` (`visualHeight`), `physics.cpp:392-410`
+(`heightfield`), `physics.cpp:422-431` (`peakMagnitude`); `peak` is set at
+`renderer.cpp:140`, `H` at `renderer.cpp:155`.
+
+The height scale is normalized by the **maximum sampled magnitude**, not by the
+95th-percentile colour limit. Exactly the sample(s) at `|V| = peak` map to
+`|z| = H`; below the peak the map is a strictly monotonic square root with no
+clipping plateau. This turns the near-charge region into a needle instead of a
+flat mesa of radius ~1.26 m at defaults. The far field is **not** inflated by
+the old percentile clamp.
 
 What the axes mean:
 
 - Horizontal axes are physical metres (`x`, `y`).
 - The vertical axis is **visual** height, labelled `altura visual V`
-  (`renderer.cpp:362-367`). It is neither physical `z` nor a linear voltage.
+  (`renderer.cpp:363-368`). It is neither physical `z` nor a linear voltage.
 - The square root is a deliberate compression; without it the near-charge peak
   would dominate the frame.
 
-Known inconsistency (documented in section 07): the lifted contours use
-`clamp(level/limit,−1,1)·H` and the charge markers use
-`clamp(V/limit,−1,1)·H` — both linear (`renderer.cpp:315-320`, `332-334`).
-They only coincide with the sqrt surface at `V = 0` and `V = ±limit`.
+The surface, the lifted contours (`renderer.cpp:319`) and the charge markers
+(`renderer.cpp:334`) all call the same `visualHeight(value, peak, H)` helper, so
+the overlays lie on the surface by construction. The caption reports the law and
+the two scales (`renderer.cpp:383`).
 
 Charge markers in this view follow their XY position on the surface, not their
 physical `z` (`renderer.cpp:326-338`).
@@ -202,7 +213,9 @@ that change is visible in the merged conflict resolution described in section
 | Direction and relative magnitude of `E` | 2 | Arrows plus underlying scalar |
 | Shape of `1/r` divergence and softening effect | 3 | The sqrt compression exposes mid-field structure |
 | Field-line topology, source/sink behaviour | 4 (dipole) | Integrated paths with termination |
-| Equipotential shells around one charge | 4 (single) | Concentric silhouette circles |
+| Equipotential shells around one charge | 4 (single) | Five concentric wireframe globes (`DrawSphereWires`, 8×16) |
 
 Do **not** use view 3 to argue quantitative agreement: its vertical axis is
-deliberately non-linear and its overlaid contours use a different mapping.
+deliberately non-linear. Its overlaid contours and markers share the same
+`visualHeight()` mapping, so they are consistent with the surface but remain a
+visual, peak-normalized encoding rather than physical height.
