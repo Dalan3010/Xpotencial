@@ -1,3 +1,6 @@
+# Local research/presentation documentation (kept on disk, not versioned)
+docs/
+
 # Local agent state and project memory
 .atl/
 .codegraph/
