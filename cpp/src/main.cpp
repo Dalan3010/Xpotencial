@@ -51,6 +51,10 @@ int main(int argc,char** argv) {
             BeginDrawing();
             ClearBackground(Color{232,236,242,255});
             renderer.draw(controls.viewport(),controls.view,controls.visible,controls.blocksCamera());
+            if (controls.view >= 3 && !controls.pointInHelpPanel(GetMousePosition())) {
+                dipole::Vec3 sample;
+                if (renderer.spatialProbe(GetMousePosition(), sample)) controls.setProbe(sample);
+            }
             dirty=controls.draw(renderer.plotRectangle());
             if (controls.parameters.chargeCount!=titleMode) {
                 titleMode=controls.parameters.chargeCount;

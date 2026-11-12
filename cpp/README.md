@@ -67,7 +67,7 @@ Tests use explicit failure checks, not `assert`, so Release tests remain active.
 | Wheel over sidebar | Scroll to remaining controls, visibility toggles, and reset |
 | Left-drag inside a 3D plot | Orbit; a gesture starting in the sidebar does not move the camera |
 | Wheel inside a 3D plot | Zoom; camera orbit/zoom survives parameter updates |
-| Help / physics | Display equations and numerical/visual conventions, including streamline animation limits |
+| Help / physics | Display equations and numerical/visual conventions; hover views 0-4 to probe a point (view 3 ray-marches the height surface at `z = center.z`, view 4 picks the 3D point on the camera-facing focal plane through the scene centre, and the dipole moment `p = q·d` is shown only for the dipole) |
 | Window close button | Exit; Escape only cancels text editing |
 
 The first four views retain their defaults and slider ranges: q=1 nC (0.1..5), k=8.99

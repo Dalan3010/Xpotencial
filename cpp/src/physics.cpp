@@ -407,6 +407,29 @@ Triangles heightfield(const Grid& g, double scale, double height) {
     }
     return out;
 }
+double surfaceHeight(const Grid& g,double scale,double height,double x,double y) {
+    if (g.n<2 || g.values.size()!=static_cast<size_t>(g.n*g.n) ||
+        !std::isfinite(scale) || scale<=0 || !std::isfinite(height) || height<=0 ||
+        !std::isfinite(x) || !std::isfinite(y) ||
+        !(g.xmax>g.xmin) || !(g.ymax>g.ymin))
+        throw std::invalid_argument("Campo de altura inválido.");
+    const double dx=(g.xmax-g.xmin)/(g.n-1), dy=(g.ymax-g.ymin)/(g.n-1);
+    const double cx=std::clamp((x-g.xmin)/dx,0.0,static_cast<double>(g.n-1));
+    const double cy=std::clamp((y-g.ymin)/dy,0.0,static_cast<double>(g.n-1));
+    const int x0=std::clamp(static_cast<int>(std::floor(cx)),0,g.n-2);
+    const int y0=std::clamp(static_cast<int>(std::floor(cy)),0,g.n-2);
+    const double u=cx-x0, v=cy-y0;
+    auto heightAt=[&](int ix,int iy) {
+        const double value=g.at(ix,iy);
+        if (!std::isfinite(value)) throw std::invalid_argument("Muestra de altura no finita.");
+        return visualHeight(value,scale,height);
+    };
+    const double ha=heightAt(x0,y0), hb=heightAt(x0+1,y0);
+    const double hc=heightAt(x0+1,y0+1), hd=heightAt(x0,y0+1);
+    // heightfield() splits each quad as (a,b,c) and (a,c,d).
+    return u>=v ? ha+u*(hb-ha)+v*(hc-hb)
+                : ha+v*(hd-ha)+u*(hc-hd);
+}
 double displayLimit(const std::vector<double>& values) {
     if (values.empty()) return 1;
     std::vector<double> sorted;

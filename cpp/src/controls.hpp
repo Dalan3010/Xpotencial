@@ -18,6 +18,8 @@ public:
     bool draw(Rectangle plotRect = {}); // True only after a valid physical parameter change.
     Rectangle viewport() const;
     bool blocksCamera() const { return help || editing_ >= 0 || dragging_ >= 0; }
+    void setProbe(dipole::Vec3 point);
+    bool pointInHelpPanel(Vector2 point) const;
 private:
     float scroll_ = 0;
     int editing_ = -1, dragging_ = -1;
@@ -25,6 +27,7 @@ private:
     std::string buffer_, error_;
     dipole::Vec3 probe_{};   // Last physical point sampled on the cut plane.
     bool hasProbe_ = false;
+    int lastView_ = -1;
     // Formula panel drag state
     float formulaOffsetX_ = 0.0f;
     float formulaOffsetY_ = 0.0f;
@@ -32,6 +35,7 @@ private:
     Vector2 formulaDragStartPos_ = {0,0};
     Vector2 formulaDragStartOffset_ = {0,0};
     bool formulaCollapsed_ = false;
+    Rectangle helpPanel_{};
     bool apply(int index, double value);
     bool parameterRow(int index, float y);
     void probePoint(const Rectangle& plotRect);

@@ -716,6 +716,47 @@ void heightEncodingTests() {
                               "peak samples reach full height with their sign");
     }
     check(near(maxAbs,H) && atFullHeight==atPeak, "only the peak samples reach full height: no plateau");
+
+    // surfaceHeight must reproduce the vertex heights and both triangle planes.
+    const double samplePeak=peakMagnitude(grid.values);
+    for (int iy=0;iy<grid.n;++iy) for (int ix=0;ix<grid.n;++ix) {
+        const Vec3 vertex=grid.point(ix,iy);
+        check(near(surfaceHeight(grid,samplePeak,H,vertex.x,vertex.y),
+                   visualHeight(grid.at(ix,iy),samplePeak,H)),
+              "surfaceHeight reproduces vertex heights");
+    }
+    const double dx=(grid.xmax-grid.xmin)/(grid.n-1), dy=(grid.ymax-grid.ymin)/(grid.n-1);
+    for (int iy=0;iy<grid.n-1;++iy) for (int ix=0;ix<grid.n-1;++ix) {
+        const double ha=visualHeight(grid.at(ix,iy),samplePeak,H);
+        const double hb=visualHeight(grid.at(ix+1,iy),samplePeak,H);
+        const double hc=visualHeight(grid.at(ix+1,iy+1),samplePeak,H);
+        const double hd=visualHeight(grid.at(ix,iy+1),samplePeak,H);
+        const double x0=grid.xmin+ix*dx, y0=grid.ymin+iy*dy;
+        check(near(surfaceHeight(grid,samplePeak,H,x0+2*dx/3,y0+dy/3),(ha+hb+hc)/3),
+              "surfaceHeight interpolates triangle a,b,c");
+        check(near(surfaceHeight(grid,samplePeak,H,x0+dx/3,y0+2*dy/3),(ha+hc+hd)/3),
+              "surfaceHeight interpolates triangle a,c,d");
+    }
+    // Single-charge default grid: match every heightfield triangle at its centroid.
+    Parameters single; single.chargeCount=1;
+    const Grid singleGrid=makeGrid(single);
+    const double singlePeak=peakMagnitude(singleGrid.values);
+    const double singleH=.3*std::min(single.xmax-single.xmin,single.ymax-single.ymin);
+    const auto singleSurface=heightfield(singleGrid,singlePeak,singleH);
+    check(singleSurface.size()==static_cast<size_t>(6*(singleGrid.n-1)*(singleGrid.n-1)),
+          "single-charge heightfield triangle count");
+    for (size_t i=0;i<singleSurface.size();i+=3) {
+        const auto& a=singleSurface[i]; const auto& b=singleSurface[i+1]; const auto& c=singleSurface[i+2];
+        const double h=surfaceHeight(singleGrid,singlePeak,singleH,
+                                     (a.position.x+b.position.x+c.position.x)/3,
+                                     (a.position.y+b.position.y+c.position.y)/3);
+        check(std::isfinite(h), "single-charge surfaceHeight finite");
+        check(near(h,(a.position.z+b.position.z+c.position.z)/3,1e-7),
+              "surfaceHeight matches heightfield triangle centroid");
+    }
+    rejected=false;
+    try { surfaceHeight(grid,samplePeak,-H,0,0); } catch (const std::invalid_argument&) { rejected=true; }
+    check(rejected, "nonpositive surfaceHeight height rejected");
 }
 }
 int main() {

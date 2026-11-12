@@ -301,6 +301,11 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     Camera3D camera{};
     camera.position=Vector3Add(streamCenter,Vector3Scale(direction,radius));
     camera.target=streamCenter; camera.up={0,1,0}; camera.fovy=45; camera.projection=CAMERA_PERSPECTIVE;
+    spatialRect_=r; spatialWidth_=w; spatialHeight_=h; spatialCamera_=camera;
+    spatialOrigin_=origin; spatialSurface_=!isStreamlines;
+    spatialFocusPoint_=streamCenter;
+    spatialFocusNormal_=Vector3Normalize(Vector3Subtract(camera.target,camera.position));
+    spatialValid_=true;
     BeginTextureMode(target_);
     ClearBackground(Color{243,245,248,255});
     const double previousNear=rlGetCullDistanceNear(), previousFar=rlGetCullDistanceFar();
@@ -412,7 +417,87 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
 void Renderer::draw(Rectangle viewport,int view,const Visibility& visibility,bool cameraBlocked) {
     DrawRectangleRec(viewport,Color{249,250,252,255});
     plotRect_={};
+    spatialValid_=false;
     if (view<3) drawPlane(viewport,view,visibility);
     else drawSpatial(viewport,view,visibility,cameraBlocked);
+}
+bool Renderer::spatialProbe(Vector2 screen,dipole::Vec3& point) const {
+    if (!spatialValid_ || spatialWidth_<=0 || spatialHeight_<=0 ||
+        spatialRect_.width<=0 || spatialRect_.height<=0) return false;
+    if (!CheckCollisionPointRec(screen,spatialRect_)) return false;
+    // The render texture is blitted with a flipped source height, so no extra Y flip.
+    const Vector2 pixel{(screen.x-spatialRect_.x)/spatialRect_.width*spatialWidth_,
+                        (screen.y-spatialRect_.y)/spatialRect_.height*spatialHeight_};
+    const Ray ray=GetScreenToWorldRayEx(pixel,spatialCamera_,spatialWidth_,spatialHeight_);
+    const double dx=ray.direction.x, dy=ray.direction.y, dz=ray.direction.z;
+    const double directionLength=std::sqrt(dx*dx+dy*dy+dz*dz);
+    if (!std::isfinite(directionLength) || directionLength<1e-9) return false;
+    const auto toPhysical=[&](Vector3 w) {
+        return dipole::Vec3{w.x+spatialOrigin_.x,-w.z+spatialOrigin_.y,w.y+spatialOrigin_.z};
+    };
+    const auto inDomain=[&](const dipole::Vec3& q) {
+        return std::isfinite(q.x) && std::isfinite(q.y) && std::isfinite(q.z) &&
+            q.x>=p_.xmin && q.x<=p_.xmax && q.y>=p_.ymin && q.y<=p_.ymax;
+    };
+    if (!spatialSurface_) {
+        // View 4: pick the 3D point on the camera-facing focal plane through the scene centre.
+        const double denom=spatialFocusNormal_.x*dx+spatialFocusNormal_.y*dy+spatialFocusNormal_.z*dz;
+        if (std::abs(denom)<1e-6) return false;
+        const Vector3 offset{spatialFocusPoint_.x-ray.position.x,
+                             spatialFocusPoint_.y-ray.position.y,
+                             spatialFocusPoint_.z-ray.position.z};
+        const double t=(spatialFocusNormal_.x*offset.x+spatialFocusNormal_.y*offset.y+
+                        spatialFocusNormal_.z*offset.z)/denom;
+        if (!std::isfinite(t) || t<=0) return false;
+        const Vector3 world{ray.position.x+ray.direction.x*static_cast<float>(t),
+                            ray.position.y+ray.direction.y*static_cast<float>(t),
+                            ray.position.z+ray.direction.z*static_cast<float>(t)};
+        const dipole::Vec3 hit=toPhysical(world);
+        if (!inDomain(hit)) return false;
+        point=hit;
+        return true;
+    }
+    // View 3: ray-march the same height field the surface was built from.
+    if (grid_.n<2) return false;
+    const double extent=std::max(p_.xmax-p_.xmin,p_.ymax-p_.ymin);
+    const double radius=extent*1.65*zoom_[0];
+    const double far=radius+extent*4;
+    const double height=.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin);
+    if (!std::isfinite(far) || far<=0 || !std::isfinite(height) || height<=0) return false;
+    const auto heightAt=[&](double x,double y) {
+        return dipole::surfaceHeight(grid_,gridPeak_,height,x,y);
+    };
+    const auto fieldAt=[&](double t) {
+        const Vector3 w{ray.position.x+ray.direction.x*static_cast<float>(t),
+                        ray.position.y+ray.direction.y*static_cast<float>(t),
+                        ray.position.z+ray.direction.z*static_cast<float>(t)};
+        const dipole::Vec3 physical=toPhysical(w);
+        return static_cast<double>(w.y)-heightAt(physical.x,physical.y);
+    };
+    constexpr int steps=2048;
+    double previousT=0, previousF=fieldAt(0);
+    for (int i=1;i<=steps;++i) {
+        const double t=far*i/steps;
+        const double f=fieldAt(t);
+        if ((previousF>0)!=(f>0)) {
+            double lo=previousT, hi=t, flo=previousF;
+            for (int j=0;j<24;++j) {
+                const double mid=(lo+hi)*.5, fmid=fieldAt(mid);
+                if ((flo>0)==(fmid>0)) { lo=mid; flo=fmid; }
+                else hi=mid;
+            }
+            const double hitT=(lo+hi)*.5;
+            const Vector3 world{ray.position.x+ray.direction.x*static_cast<float>(hitT),
+                                ray.position.y+ray.direction.y*static_cast<float>(hitT),
+                                ray.position.z+ray.direction.z*static_cast<float>(hitT)};
+            dipole::Vec3 hit=toPhysical(world);
+            hit.z=p_.center.z;
+            if (!inDomain(hit)) return false;
+            point=hit;
+            return true;
+        }
+        previousT=t; previousF=f;
+    }
+    return false;
 }
 }
