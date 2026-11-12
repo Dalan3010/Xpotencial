@@ -21,8 +21,8 @@ file is only the entry point.
 │   │   ├── controls.cpp          # native sidebar, numeric editing, help overlay
 │   │   └── main.cpp              # window, --smoke flag, frame loop
 │   ├── tests/core_tests.cpp      # CTest suite; no graphics and no network
-│   └── README.md                 # full documentation
-├── odd/                          # development task records
+│   └── README.md                 # usage, controls and physics notes
+├── docs/                         # research documentation (article source)
 └── README.md                     # this file
 ```
 
@@ -50,6 +50,23 @@ cmake --build cpp/build-linux
 Windows/MSVC commands, system prerequisites and offline builds are documented in
 [cpp/README.md](cpp/README.md).
 
+## Documentation
+
+Usage lives in [cpp/README.md](cpp/README.md). The research-oriented set in
+[docs/](docs/README.md) documents the model, the numerical methods, the
+architecture, the visual encodings, the verification evidence, the limitations,
+the reproducibility procedure, and a section-by-section plan for writing an
+article from this material.
+
+| Start here | If you need |
+|---|---|
+| [docs/02-physical-model.md](docs/02-physical-model.md) | Equations, units, softening, reference values |
+| [docs/03-numerical-methods.md](docs/03-numerical-methods.md) | Grids, contours, field lines, meshes, cost model |
+| [docs/04-software-architecture.md](docs/04-software-architecture.md) | Modules, state ownership, caches |
+| [docs/06-verification-and-validation.md](docs/06-verification-and-validation.md) | What the tests prove and what they do not |
+| [docs/07-limitations-and-threats-to-validity.md](docs/07-limitations-and-threats-to-validity.md) | Known defects and honest boundaries |
+| [docs/09-article-blueprint.md](docs/09-article-blueprint.md) | Paper structure, figures, claims-to-evidence |
+
 ## The five views
 
 | # | View |
@@ -58,7 +75,7 @@ Windows/MSVC commands, system prerequisites and offline builds are documented in
 | 2 | Equipotential contours (17 levels, CPU marching squares) |
 | 3 | Electric-field vector overlay |
 | 4 | Potential height surface `V(x,y)` |
-| 5 | 3D view: single charge shows concentric equipotential spheres (circles) with no radial streamlines; dipole keeps radial field streamlines and direction markers |
+| 5 | 3D view: single charge shows five concentric equipotential wireframe spheres with no radial streamlines; dipole keeps radial field streamlines and direction markers |
 
 ## Physics conventions
 

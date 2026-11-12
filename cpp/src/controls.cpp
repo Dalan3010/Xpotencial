@@ -122,6 +122,7 @@ bool Controls::parameterRow(int index,float y) {
     return changed;
 }
 bool Controls::draw(Rectangle plotRect) {
+    if (lastView_ != view) { lastView_ = view; if (view >= 3) hasProbe_ = false; }
     bool changed = false;
     DrawRectangle(0,0,GetScreenWidth(),90,Color{24,32,46,255});
     const char* title = "Dipolo eléctrico | nativo C++17";
@@ -255,7 +256,6 @@ void Controls::drawHelp(const Rectangle& plotRect) {
     const double potential=dipole::potential(probe_,parameters);
     const dipole::Vec3 field=dipole::field(probe_,parameters);
     const double fieldMagnitude=dipole::length(field);
-    const double moment=parameters.q*parameters.d;
     const Rectangle vp=viewport();
     const float panelWidth=std::min(860.0f,std::max(420.0f,vp.width-160.0f));
     const float panelHeight=std::min(620.0f,vp.height-20.0f);
@@ -265,6 +265,7 @@ void Controls::drawHelp(const Rectangle& plotRect) {
     panelX = std::clamp(panelX, clampPad, static_cast<float>(GetScreenWidth()) - panelWidth - clampPad);
     panelY = std::clamp(panelY, 90.0f, static_cast<float>(GetScreenHeight()) - (formulaCollapsed_ ? 40.0f : panelHeight) - clampPad);
     Rectangle panel{panelX, panelY, panelWidth, formulaCollapsed_ ? 36.0f : panelHeight};
+    helpPanel_ = panel;
     DrawRectangleRec(panel,Color{20,29,43,244});
     DrawRectangleLinesEx(panel,2,Color{53,107,155,255});
     Rectangle header{panel.x, panel.y, panel.width, 36.0f};
@@ -334,28 +335,31 @@ void Controls::drawHelp(const Rectangle& plotRect) {
 
     plain("Fórmulas y resultados en tiempo real",22,SKYBLUE,30);
     plain(view<3 ? "Mueve el ratón sobre el mapa del corte para sondear el punto."
-                 : "Vista 3D: no hay corte, se evalúa el último punto sondeado.",16,muted,26);
+                 : view==3 ? "Mueve el ratón sobre la superficie de altura para sondear el punto."
+                           : "Mueve el ratón sobre la vista 3D para sondear el punto (plano focal del centro).",16,muted,26);
     y+=4;
-    plain("Punto de evaluación (corte z = "+fixed(probe_.z,4)+" m)",17,label,26);
+    plain(std::string("Punto de evaluación (")+(view<4 ? "corte z = " : "plano focal, z = ")
+          +fixed(probe_.z,4)+" m)",17,label,26);
     plain("x = "+fixed(probe_.x,4)+" m   y = "+fixed(probe_.y,4)+" m   z = "+fixed(probe_.z,4)+" m",17,label,26);
     if (single) plain("r = "+fixed(rPlus,5)+" m",17,label,26);
     else plain("r+ = "+fixed(rPlus,5)+" m   r- = "+fixed(rMinus,5)+" m",17,label,26);
     y+=10;
-    equation({{"p = q·d",formula},
-              {"  ==>  p = ",muted},
-              {"("+fixed(parameters.q,2)+" nC) · ("+fixed(parameters.d,2)+" m)",formula},
-              {" = ",muted},
-              {fixed(moment,2)+" nC·m",result,true}},28);
-    if (single) {
-        equation({{"V = k·q·(1/r)",formula},
-                  {"  ==>  V = ",muted},
-                  {"("+scientific(parameters.k,2)+") · ("+fixed(parameters.q,2)+" nC) · (1/"+fixed(rPlus,2)+")",formula},
+    if (!single) {
+        const double moment=parameters.q*parameters.d;
+        equation({{"p = q·d",formula},
+                  {"  ==>  p = ",muted},
+                  {"("+fixed(parameters.q,2)+" nC) · ("+fixed(parameters.d,2)+" m)",formula},
                   {" = ",muted},
-                  {fixed(potential,2)+" V",result,true}},28);
-    } else {
+                  {fixed(moment,2)+" nC·m",result,true}},28);
         equation({{"V = k·q·(1/r+ - 1/r-)",formula},
                   {"  ==>  V = ",muted},
                   {"("+scientific(parameters.k,2)+") · ("+fixed(parameters.q,2)+" nC) · (1/"+fixed(rPlus,2)+" - 1/"+fixed(rMinus,2)+")",formula},
+                  {" = ",muted},
+                  {fixed(potential,2)+" V",result,true}},28);
+    } else {
+        equation({{"V = k·q·(1/r)",formula},
+                  {"  ==>  V = ",muted},
+                  {"("+scientific(parameters.k,2)+") · ("+fixed(parameters.q,2)+" nC) · (1/"+fixed(rPlus,2)+")",formula},
                   {" = ",muted},
                   {fixed(potential,2)+" V",result,true}},28);
     }
@@ -369,8 +373,24 @@ void Controls::drawHelp(const Rectangle& plotRect) {
     y+=10;
     plain("Convenciones: q en nC; k mostrada en unidades SI de 10^9.",16,muted,23);
     plain("E = -grad V con diferencias centradas, h = 0.05 * epsilon.",16,muted,23);
-    plain("Corte de mapa y campo: z físico = z del centro.",16,muted,23);
-    plain(single ? "Vista 5 dibuja 5 esferas equipotenciales concéntricas alrededor de la carga."
-                 : "Vista 5 integra el campo del dipolo.",16,muted,23);
+    if (view<3) plain("Corte de mapa y campo: z físico = z del centro.",16,muted,23);
+    else if (view==4) plain("Sondeo 3D: se evalúa V y E en el punto elegido sobre el plano focal del centro.",16,muted,23);
+    const double referenceLength=dipole::referenceLength(parameters);
+    if (view==3) {
+        const double height=.3*std::min(parameters.xmax-parameters.xmin,parameters.ymax-parameters.ymin);
+        plain("Altura visual: z_vis = H·signo(V)·sqrt(|V|/|V|máx); H = "+fixed(height,3)+" m.",16,muted,23);
+        plain("El punto de la superficie se evalúa en el corte z = centro.",16,muted,23);
+    } else if (view==4 && single) {
+        plain("Esferas equipotenciales: r_n = {0.2,0.4,0.6,0.8,1.0}·L, L = "+fixed(referenceLength,3)+" m.",16,muted,23);
+    } else if (view==4) {
+        plain("Líneas de flujo: 16 rutas, paso 0.02·L, L = "+fixed(referenceLength,3)+" m.",16,muted,23);
+    }
+}
+void Controls::setProbe(dipole::Vec3 point) {
+    probe_=point;
+    hasProbe_=true;
+}
+bool Controls::pointInHelpPanel(Vector2 point) const {
+    return help && CheckCollisionPointRec(point,helpPanel_);
 }
 }

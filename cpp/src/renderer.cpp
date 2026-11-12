@@ -72,26 +72,39 @@ void lineArrow(Vector2 a,Vector2 b,Color c) {
 bool chargeIsPositive(const dipole::Parameters& p,int index) {
     return p.chargeCount==1 ? p.q>=0 : index==0;
 }
-// Five concentric equipotential circles drawn as billboards: each lies in the plane
-// through the charge perpendicular to the camera forward vector, so it renders as the
-// exact silhouette of a sphere (a perfect circle) from any orbit angle.
-void equipotentialCircles(Vector3 center,float reference,Vector3 forward) {
+// Exact perspective silhouette of a sphere: the tangent circle sits r^2/d in front of
+// the centre with radius r*sqrt(1-(r/d)^2). Drawing it with many segments gives a smooth
+// rim, so the wireframe reads as a sphere instead of a faceted polyhedron.
+void sphereSilhouette(Vector3 center,Vector3 cameraPosition,float radius,Color color) {
+    const float distance=Vector3Distance(center,cameraPosition);
+    if (distance<=radius*1.001f) return; // Camera inside the sphere: no silhouette.
+    const Vector3 forward=Vector3Normalize(Vector3Subtract(center,cameraPosition));
+    const Vector3 tangentCenter=Vector3Subtract(center,Vector3Scale(forward,radius*radius/distance));
+    const float tangentRadius=radius*std::sqrt(1.0f-(radius/distance)*(radius/distance));
     const Vector3 referenceAxis=std::abs(forward.y)<.999f ? Vector3{0,1,0} : Vector3{0,0,1};
     const Vector3 u=Vector3Normalize(Vector3CrossProduct(forward,referenceAxis));
-    const Vector3 v=Vector3Normalize(Vector3CrossProduct(forward,u)); // orthonormal to u in-plane
-    const Color circle{90,96,104,255};
-    constexpr int segments=96;
+    const Vector3 v=Vector3Normalize(Vector3CrossProduct(forward,u));
+    constexpr int segments=160;
+    Vector3 previous{};
+    for (int i=0;i<=segments;++i) {
+        const float t=2*PI*static_cast<float>(i)/segments;
+        const float c=std::cos(t)*tangentRadius, s=std::sin(t)*tangentRadius;
+        const Vector3 current{tangentCenter.x+u.x*c+v.x*s,tangentCenter.y+u.y*c+v.y*s,
+                              tangentCenter.z+u.z*c+v.z*s};
+        if (i>0) DrawLine3D(previous,current,color);
+        previous=current;
+    }
+}
+// Five concentric equipotential spheres: V = kq/r is constant on each one, so they are
+// real 3D wireframe globes that orbit with the camera. A light lattice gives the depth
+// cue and a smooth rim keeps the outline round; low-poly wires alone looked faceted.
+void equipotentialSpheres(Vector3 center,float reference,Vector3 cameraPosition) {
+    constexpr int rings=8, slices=16;
     constexpr float radii[]={.2f,.4f,.6f,.8f,1.0f};
     for (const float factor : radii) {
         const float radius=reference*factor;
-        Vector3 previous{center.x+u.x*radius,center.y+u.y*radius,center.z+u.z*radius};
-        for (int i=1;i<=segments;++i) {
-            const float t=2*PI*static_cast<float>(i)/segments;
-            const float c=std::cos(t)*radius, s=std::sin(t)*radius;
-            const Vector3 current{center.x+u.x*c+v.x*s,center.y+u.y*c+v.y*s,center.z+u.z*c+v.z*s};
-            DrawLine3D(previous,current,circle);
-            previous=current;
-        }
+        sphereSilhouette(center,cameraPosition,radius,Color{70,78,90,215});
+        DrawSphereWires(center,radius,rings,slices,Color{86,94,104,120});
     }
 }
 }
@@ -137,6 +150,7 @@ void Renderer::update(const dipole::Parameters& p) {
     if (!planeChanged) return;
     grid_=dipole::makeGrid(p);
     gridLimit_=dipole::displayLimit(grid_.values);
+    gridPeak_=dipole::peakMagnitude(grid_.values);
     contours_.clear();
     for (int i=-8;i<=8;++i) {
         const double level=gridLimit_*i/8;
@@ -152,7 +166,7 @@ void Renderer::update(const dipole::Parameters& p) {
         arrows_.push_back({point,e});
     }
     const double height=.3*std::min(p.xmax-p.xmin,p.ymax-p.ymin);
-    const auto surfaceData=dipole::heightfield(grid_,gridLimit_,height);
+    const auto surfaceData=dipole::heightfield(grid_,gridPeak_,height);
     if (surface_.vertices) { UnloadMesh(surface_); surface_={}; }
     surface_=gpuMesh(surfaceData,gridLimit_,{(p.xmin+p.xmax)/2,(p.ymin+p.ymax)/2,0});
     std::vector<Color> pixels(static_cast<size_t>(grid_.n*grid_.n));
@@ -287,6 +301,11 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     Camera3D camera{};
     camera.position=Vector3Add(streamCenter,Vector3Scale(direction,radius));
     camera.target=streamCenter; camera.up={0,1,0}; camera.fovy=45; camera.projection=CAMERA_PERSPECTIVE;
+    spatialRect_=r; spatialWidth_=w; spatialHeight_=h; spatialCamera_=camera;
+    spatialOrigin_=origin; spatialSurface_=!isStreamlines;
+    spatialFocusPoint_=streamCenter;
+    spatialFocusNormal_=Vector3Normalize(Vector3Subtract(camera.target,camera.position));
+    spatialValid_=true;
     BeginTextureMode(target_);
     ClearBackground(Color{243,245,248,255});
     const double previousNear=rlGetCullDistanceNear(), previousFar=rlGetCullDistanceFar();
@@ -296,9 +315,7 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     BeginMode3D(camera);
     if (isStreamlines) {
         if (p_.chargeCount==1) {
-            // Billboard circles must be emitted inside the 3D pass.
-            equipotentialCircles(streamCenter,static_cast<float>(dipole::referenceLength(p_)),
-                                 Vector3Normalize(Vector3Subtract(camera.target,camera.position)));
+            equipotentialSpheres(streamCenter,static_cast<float>(dipole::referenceLength(p_)),camera.position);
         } else {
             for (const auto& path : streamlines_) {
                 for (size_t i=1;i<path.points.size();++i) {
@@ -315,7 +332,7 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
     if (!isStreamlines && v.contours) {
         const double height=.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin);
         for (auto segment : contours_) {
-            segment.a.z=segment.b.z=std::clamp(segment.level/gridLimit_,-1.0,1.0)*height+.002*span;
+            segment.a.z=segment.b.z=dipole::visualHeight(segment.level,gridPeak_,height)+.002*span;
             DrawLine3D(world(segment.a,origin),world(segment.b,origin),Color{28,35,48,180});
         }
     }
@@ -330,7 +347,7 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
         for (int i=0;i<p_.chargeCount;++i) {
             auto point=i==0 ? c.plus : c.minus;
             if (!isStreamlines) {
-                point.z=.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin)*std::clamp(dipole::potential({point.x,point.y,p_.center.z},p_)/gridLimit_,-1.0,1.0);
+                point.z=dipole::visualHeight(dipole::potential({point.x,point.y,p_.center.z},p_),gridPeak_,.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin));
             }
             chargePoints[i]=world(point,origin);
             DrawSphere(chargePoints[i],extent*.012f,chargeIsPositive(p_,i) ? MAROON : DARKBLUE);
@@ -379,7 +396,7 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
         std::snprintf(caption,sizeof(caption),"Líneas de flujo del campo eléctrico integradas | %zu rutas | metros físicos",streamlines_.size());
     } else {
         const double visHeight = .3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin);
-        std::snprintf(caption,sizeof(caption),"ALTURA visual = %.3g * signo(V) * (|V/%.3g|^0.5); NO es z físico",visHeight,gridLimit_);
+        std::snprintf(caption,sizeof(caption),"ALTURA visual = H * signo(V) * sqrt(|V|/|V|máx); H=%.3g, |V|máx=%.3g; NO es z físico",visHeight,gridPeak_);
     }
     app::DrawTextUi(caption,static_cast<int>(r.x+8),static_cast<int>(r.y+8),15,DARKGRAY);
     if (isStreamlines) {
@@ -400,7 +417,87 @@ void Renderer::drawSpatial(Rectangle r,int view,const Visibility& v,bool blocked
 void Renderer::draw(Rectangle viewport,int view,const Visibility& visibility,bool cameraBlocked) {
     DrawRectangleRec(viewport,Color{249,250,252,255});
     plotRect_={};
+    spatialValid_=false;
     if (view<3) drawPlane(viewport,view,visibility);
     else drawSpatial(viewport,view,visibility,cameraBlocked);
+}
+bool Renderer::spatialProbe(Vector2 screen,dipole::Vec3& point) const {
+    if (!spatialValid_ || spatialWidth_<=0 || spatialHeight_<=0 ||
+        spatialRect_.width<=0 || spatialRect_.height<=0) return false;
+    if (!CheckCollisionPointRec(screen,spatialRect_)) return false;
+    // The render texture is blitted with a flipped source height, so no extra Y flip.
+    const Vector2 pixel{(screen.x-spatialRect_.x)/spatialRect_.width*spatialWidth_,
+                        (screen.y-spatialRect_.y)/spatialRect_.height*spatialHeight_};
+    const Ray ray=GetScreenToWorldRayEx(pixel,spatialCamera_,spatialWidth_,spatialHeight_);
+    const double dx=ray.direction.x, dy=ray.direction.y, dz=ray.direction.z;
+    const double directionLength=std::sqrt(dx*dx+dy*dy+dz*dz);
+    if (!std::isfinite(directionLength) || directionLength<1e-9) return false;
+    const auto toPhysical=[&](Vector3 w) {
+        return dipole::Vec3{w.x+spatialOrigin_.x,-w.z+spatialOrigin_.y,w.y+spatialOrigin_.z};
+    };
+    const auto inDomain=[&](const dipole::Vec3& q) {
+        return std::isfinite(q.x) && std::isfinite(q.y) && std::isfinite(q.z) &&
+            q.x>=p_.xmin && q.x<=p_.xmax && q.y>=p_.ymin && q.y<=p_.ymax;
+    };
+    if (!spatialSurface_) {
+        // View 4: pick the 3D point on the camera-facing focal plane through the scene centre.
+        const double denom=spatialFocusNormal_.x*dx+spatialFocusNormal_.y*dy+spatialFocusNormal_.z*dz;
+        if (std::abs(denom)<1e-6) return false;
+        const Vector3 offset{spatialFocusPoint_.x-ray.position.x,
+                             spatialFocusPoint_.y-ray.position.y,
+                             spatialFocusPoint_.z-ray.position.z};
+        const double t=(spatialFocusNormal_.x*offset.x+spatialFocusNormal_.y*offset.y+
+                        spatialFocusNormal_.z*offset.z)/denom;
+        if (!std::isfinite(t) || t<=0) return false;
+        const Vector3 world{ray.position.x+ray.direction.x*static_cast<float>(t),
+                            ray.position.y+ray.direction.y*static_cast<float>(t),
+                            ray.position.z+ray.direction.z*static_cast<float>(t)};
+        const dipole::Vec3 hit=toPhysical(world);
+        if (!inDomain(hit)) return false;
+        point=hit;
+        return true;
+    }
+    // View 3: ray-march the same height field the surface was built from.
+    if (grid_.n<2) return false;
+    const double extent=std::max(p_.xmax-p_.xmin,p_.ymax-p_.ymin);
+    const double radius=extent*1.65*zoom_[0];
+    const double far=radius+extent*4;
+    const double height=.3*std::min(p_.xmax-p_.xmin,p_.ymax-p_.ymin);
+    if (!std::isfinite(far) || far<=0 || !std::isfinite(height) || height<=0) return false;
+    const auto heightAt=[&](double x,double y) {
+        return dipole::surfaceHeight(grid_,gridPeak_,height,x,y);
+    };
+    const auto fieldAt=[&](double t) {
+        const Vector3 w{ray.position.x+ray.direction.x*static_cast<float>(t),
+                        ray.position.y+ray.direction.y*static_cast<float>(t),
+                        ray.position.z+ray.direction.z*static_cast<float>(t)};
+        const dipole::Vec3 physical=toPhysical(w);
+        return static_cast<double>(w.y)-heightAt(physical.x,physical.y);
+    };
+    constexpr int steps=2048;
+    double previousT=0, previousF=fieldAt(0);
+    for (int i=1;i<=steps;++i) {
+        const double t=far*i/steps;
+        const double f=fieldAt(t);
+        if ((previousF>0)!=(f>0)) {
+            double lo=previousT, hi=t, flo=previousF;
+            for (int j=0;j<24;++j) {
+                const double mid=(lo+hi)*.5, fmid=fieldAt(mid);
+                if ((flo>0)==(fmid>0)) { lo=mid; flo=fmid; }
+                else hi=mid;
+            }
+            const double hitT=(lo+hi)*.5;
+            const Vector3 world{ray.position.x+ray.direction.x*static_cast<float>(hitT),
+                                ray.position.y+ray.direction.y*static_cast<float>(hitT),
+                                ray.position.z+ray.direction.z*static_cast<float>(hitT)};
+            dipole::Vec3 hit=toPhysical(world);
+            hit.z=p_.center.z;
+            if (!inDomain(hit)) return false;
+            point=hit;
+            return true;
+        }
+        previousT=t; previousF=f;
+    }
+    return false;
 }
 }

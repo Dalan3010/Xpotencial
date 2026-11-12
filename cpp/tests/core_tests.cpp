@@ -672,10 +672,96 @@ void geometryTests() {
     check(h.size()==static_cast<size_t>(6*149*149), "large heightfield without ushort indices");
     for (const auto& a : h) check(std::isfinite(a.position.z) && std::abs(a.position.z)<=3, "height clipping");
 }
+void heightEncodingTests() {
+    check(near(peakMagnitude({1,-4,2}),4), "peak magnitude uses max |value|");
+    bool rejected=false;
+    try { peakMagnitude({}); } catch (const std::invalid_argument&) { rejected=true; }
+    check(rejected, "empty peak magnitude rejected");
+    rejected=false;
+    try { peakMagnitude({1,std::numeric_limits<double>::quiet_NaN()}); }
+    catch (const std::invalid_argument&) { rejected=true; }
+    check(rejected, "nonfinite peak sample rejected");
+
+    const double peak=4, H=3;
+    check(near(visualHeight(0,peak,H),0), "zero potential has zero height");
+    check(near(visualHeight(peak,peak,H),H) && near(visualHeight(-peak,peak,H),-H),
+          "peak maps to full visual height with sign");
+    check(near(visualHeight(peak*.5,peak,H),std::sqrt(.5)*H), "half-scale follows the sqrt law");
+    const double magnitudes[]={.01,.1,.5,1,2,3.9,4};
+    for (size_t i=0;i<sizeof(magnitudes)/sizeof(magnitudes[0]);++i) {
+        if (i>0) check(std::abs(visualHeight(magnitudes[i],peak,H))>std::abs(visualHeight(magnitudes[i-1],peak,H)),
+                       "height strictly increases below the peak");
+        for (size_t j=0;j<i;++j)
+            check(std::abs(visualHeight(magnitudes[i],peak,H))!=std::abs(visualHeight(magnitudes[j],peak,H)),
+                  "distinct magnitudes do not share a height");
+    }
+    rejected=false;
+    try { visualHeight(1,0,H); } catch (const std::invalid_argument&) { rejected=true; }
+    check(rejected, "nonpositive height scale rejected");
+    rejected=false;
+    try { visualHeight(std::numeric_limits<double>::infinity(),peak,H); }
+    catch (const std::invalid_argument&) { rejected=true; }
+    check(rejected, "nonfinite height value rejected");
+
+    Grid grid{3,-1,1,-1,1,{4,-2,1,0,-4,3,2,-1,0}};
+    const auto surface=heightfield(grid,peakMagnitude(grid.values),H);
+    check(surface.size()==static_cast<size_t>(6*4), "synthetic heightfield triangle count");
+    size_t atPeak=0, atFullHeight=0;
+    double maxAbs=0;
+    for (const auto& sample : surface) {
+        const bool peakSample=std::abs(sample.value)==4;
+        const bool full=std::abs(sample.position.z)==H;
+        atPeak+=peakSample; atFullHeight+=full; maxAbs=std::max(maxAbs,std::abs(sample.position.z));
+        if (peakSample) check(full && std::copysign(1.0,sample.position.z)==std::copysign(1.0,sample.value),
+                              "peak samples reach full height with their sign");
+    }
+    check(near(maxAbs,H) && atFullHeight==atPeak, "only the peak samples reach full height: no plateau");
+
+    // surfaceHeight must reproduce the vertex heights and both triangle planes.
+    const double samplePeak=peakMagnitude(grid.values);
+    for (int iy=0;iy<grid.n;++iy) for (int ix=0;ix<grid.n;++ix) {
+        const Vec3 vertex=grid.point(ix,iy);
+        check(near(surfaceHeight(grid,samplePeak,H,vertex.x,vertex.y),
+                   visualHeight(grid.at(ix,iy),samplePeak,H)),
+              "surfaceHeight reproduces vertex heights");
+    }
+    const double dx=(grid.xmax-grid.xmin)/(grid.n-1), dy=(grid.ymax-grid.ymin)/(grid.n-1);
+    for (int iy=0;iy<grid.n-1;++iy) for (int ix=0;ix<grid.n-1;++ix) {
+        const double ha=visualHeight(grid.at(ix,iy),samplePeak,H);
+        const double hb=visualHeight(grid.at(ix+1,iy),samplePeak,H);
+        const double hc=visualHeight(grid.at(ix+1,iy+1),samplePeak,H);
+        const double hd=visualHeight(grid.at(ix,iy+1),samplePeak,H);
+        const double x0=grid.xmin+ix*dx, y0=grid.ymin+iy*dy;
+        check(near(surfaceHeight(grid,samplePeak,H,x0+2*dx/3,y0+dy/3),(ha+hb+hc)/3),
+              "surfaceHeight interpolates triangle a,b,c");
+        check(near(surfaceHeight(grid,samplePeak,H,x0+dx/3,y0+2*dy/3),(ha+hc+hd)/3),
+              "surfaceHeight interpolates triangle a,c,d");
+    }
+    // Single-charge default grid: match every heightfield triangle at its centroid.
+    Parameters single; single.chargeCount=1;
+    const Grid singleGrid=makeGrid(single);
+    const double singlePeak=peakMagnitude(singleGrid.values);
+    const double singleH=.3*std::min(single.xmax-single.xmin,single.ymax-single.ymin);
+    const auto singleSurface=heightfield(singleGrid,singlePeak,singleH);
+    check(singleSurface.size()==static_cast<size_t>(6*(singleGrid.n-1)*(singleGrid.n-1)),
+          "single-charge heightfield triangle count");
+    for (size_t i=0;i<singleSurface.size();i+=3) {
+        const auto& a=singleSurface[i]; const auto& b=singleSurface[i+1]; const auto& c=singleSurface[i+2];
+        const double h=surfaceHeight(singleGrid,singlePeak,singleH,
+                                     (a.position.x+b.position.x+c.position.x)/3,
+                                     (a.position.y+b.position.y+c.position.y)/3);
+        check(std::isfinite(h), "single-charge surfaceHeight finite");
+        check(near(h,(a.position.z+b.position.z+c.position.z)/3,1e-7),
+              "surfaceHeight matches heightfield triangle centroid");
+    }
+    rejected=false;
+    try { surfaceHeight(grid,samplePeak,-H,0,0); } catch (const std::invalid_argument&) { rejected=true; }
+    check(rejected, "nonpositive surfaceHeight height rejected");
+}
 }
 int main() {
     try { radialTests(); physicsTests(); singleChargeTests(); geometryTests(); volumeTests();
-          affinePlaneTopologyTests(); streamlineTests(); monopoleStreamlineTests(); }
+          affinePlaneTopologyTests(); streamlineTests(); monopoleStreamlineTests(); heightEncodingTests(); }
     catch (const std::exception& e) { std::cerr << "FAIL: " << e.what() << '\n'; return 1; }
     std::cout << "PASS: " << checks << " active behavior checks\n";
 }

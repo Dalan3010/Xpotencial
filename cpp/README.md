@@ -67,7 +67,7 @@ Tests use explicit failure checks, not `assert`, so Release tests remain active.
 | Wheel over sidebar | Scroll to remaining controls, visibility toggles, and reset |
 | Left-drag inside a 3D plot | Orbit; a gesture starting in the sidebar does not move the camera |
 | Wheel inside a 3D plot | Zoom; camera orbit/zoom survives parameter updates |
-| Help / physics | Display equations and numerical/visual conventions, including streamline animation limits |
+| Help / physics | Display equations and numerical/visual conventions; hover views 0-4 to probe a point (view 3 ray-marches the height surface at `z = center.z`, view 4 picks the 3D point on the camera-facing focal plane through the scene centre, and the dipole moment `p = q·d` is shown only for the dipole) |
 | Window close button | Exit; Escape only cancels text editing |
 
 The first four views retain their defaults and slider ranges: q=1 nC (0.1..5), k=8.99
@@ -91,9 +91,14 @@ field direction; they do **not** represent particle velocity. Reset restores
 physical and visibility defaults; camera state is retained.
 
 In single-charge mode no streamlines are integrated or drawn: view five renders
-five concentric equipotential circles (the billboard silhouette of spheres) around
-the charge, at radii 0.2, 0.4, 0.6, 0.8 and 1.0 times the reference length
-(half the smaller domain span), plus the axes and the charge marker. The dipole
+five concentric equipotential wireframe spheres (`DrawSphereWires`, 8 rings ×
+16 slices at low alpha) around the charge, at radii 0.2, 0.4, 0.6, 0.8 and 1.0
+times the reference length (half the smaller domain span), plus the axes and the
+charge marker. Each globe adds its exact perspective silhouette (the tangent
+circle at `r²/d` in front of the centre, radius `r·sqrt(1−(r/d)²)`, 160
+segments) so the rim is round instead of faceted. The lattice is world-space
+geometry, so orbiting shows depth; the silhouette is the mathematically correct
+sphere outline for the current camera, not a flat billboard. The dipole
 mode keeps the radial streamlines and animated markers described above, and
 switching source resets the view-five camera to that mode's reference framing.
 
@@ -126,9 +131,14 @@ parameters and visibility defaults, without forcibly resetting the camera.
   absolute samples. Clipping affects visualization only, not physics.
 - **Height surface:** x/y are in meters, but the vertical coordinate is
   **visual normalized potential**, NOT physical z or potential in meters:
-  `height=H*clamp(V/colorLimit,-1,1)`, `H=0.3*min(domain spans)`.
-  The equation is displayed on the plot. Charge markers follow their XY
-  positions on this heightfield, not their physical z.
+  `height=H*sign(V)*sqrt(|V|/peak)`, `H=0.3*min(domain spans)`, where `peak` is
+  the maximum sampled |V|. Normalizing by the maximum (instead of the 95th
+  percentile) removes the clipping plateau: only the peak sample reaches full
+  height, so a single charge is a sharp needle rather than a flat mesa. The
+  square root compresses the mid-field. The equation is displayed on the plot.
+  Charge markers follow their XY positions on this heightfield, not their
+  physical z; the surface, the lifted contours and the charge markers all use
+  the same `visualHeight()` law, so the former overlay mismatch is resolved.
 - **Retained core APIs:** radial-field and volume/equipotential routines remain
   available and tested as numerical functionality; no radial-magnitude surface,
   transported-arrow overlay, or related caption is shown in the native views.

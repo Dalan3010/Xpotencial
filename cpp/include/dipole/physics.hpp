@@ -88,6 +88,15 @@ struct Grid3D {
 Grid3D makeGrid3D(const Parameters& p);
 // Six conforming tetrahedra per cube, linearly interpolated in physical meters.
 Triangles equipotentials(const Grid3D& grid, double level, bool paired);
-Triangles heightfield(const Grid& grid, double colorLimit, double visualHeight);
+Triangles heightfield(const Grid& grid, double scale, double height);
+// Height of the rendered surface at physical (x, y): the same linear
+// interpolation of visualHeight() at the grid vertices that heightfield()
+// triangulates (quad split along the (x,y)-(x+1,y+1) diagonal). x/y outside the
+// grid are clamped to the border; callers reject out-of-domain hits themselves.
+double surfaceHeight(const Grid& grid, double scale, double height, double x, double y);
 double displayLimit(const std::vector<double>& values);
+// Maximum sampled |V|, floored at 1e-9 so it can always scale a visualization.
+double peakMagnitude(const std::vector<double>& values);
+// Shared vertical law for the height surface, lifted contours and charge markers.
+double visualHeight(double value, double scale, double height);
 }
